@@ -30,20 +30,19 @@ Step-by-step provisioning for every external service Kavora CRM needs, plus loca
 
 ## 3. Twilio (the working number)
 
-We use a **subaccount + API key** for blast-radius isolation. Do NOT use your master auth token.
+The CRM talks to Twilio using the **Account SID + Auth Token** for the production Twilio account (kavora-crm). The same Auth Token verifies inbound webhook signatures — one credential covers both directions.
 
-1. In Twilio Console → **Account → Subaccounts → Create new**.
-2. Inside the subaccount: **Account → API keys & tokens → Create new API key**. Copy SID + Secret.
-3. **Phone Numbers → Manage → Buy a number** OR let the CRM do it: skip this if you'll buy from `/settings/phone-numbers/buy`.
-4. Note the **subaccount Account SID** (`AC…`) and the **subaccount Auth Token** (used only for webhook signature verification).
-5. Fill in:
+1. In Twilio Console, switch to the **kavora-crm** account (top-left account switcher).
+2. **Account → API keys & tokens** → copy the **Live** Account SID and Auth Token (click the eye icon next to the dotted token to reveal it).
+3. **Phone Numbers → Manage → Buy a number** OR let the CRM do it from `/settings/phone-numbers/buy`.
+4. Fill in:
    ```
    TWILIO_ACCOUNT_SID=AC...
-   TWILIO_API_KEY_SID=SK...
-   TWILIO_API_KEY_SECRET=...
    TWILIO_AUTH_TOKEN=...
-   NEXT_PUBLIC_APP_URL=https://your-deployment-domain
+   NEXT_PUBLIC_APP_URL=https://crm.kavora.systems
    ```
+
+> **Trial accounts:** both `kavora-crm` and any other Twilio accounts come up on Trial. Trial accounts can buy exactly one phone number (free) and can only send SMS to verified caller IDs. Upgrade at Account → Billing to remove the limits before going live with real customer traffic.
 
 ### US call recording consent
 

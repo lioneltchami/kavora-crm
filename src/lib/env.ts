@@ -66,7 +66,7 @@ export const env = parsed.success ? parsed.data : (process.env as unknown as z.i
 
 /** True if Twilio is configured enough to send/receive. */
 export const twilioConfigured = Boolean(
-  env.TWILIO_ACCOUNT_SID && env.TWILIO_API_KEY_SID && env.TWILIO_API_KEY_SECRET && env.TWILIO_AUTH_TOKEN,
+  env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN,
 );
 
 /** True if Anthropic is configured. */

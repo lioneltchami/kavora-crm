@@ -27,8 +27,8 @@ export default async function PhoneNumbersPage() {
 
       {!twilioConfigured && (
         <div className="rounded-md border border-amber-500 bg-amber-50 p-4 text-sm dark:bg-amber-950/20">
-          Twilio is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET,
-          and TWILIO_AUTH_TOKEN in your environment to enable number management.
+          Twilio is not configured. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in your
+          environment to enable number management.
         </div>
       )}
 

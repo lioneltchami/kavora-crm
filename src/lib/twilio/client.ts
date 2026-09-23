@@ -3,22 +3,21 @@ import twilio from "twilio";
 import { env, twilioConfigured } from "@/lib/env";
 
 /**
- * Twilio REST client. Uses API Key + Secret (NOT the master auth token) so that
- * if any one integration is compromised, blast radius is the subaccount only.
+ * Twilio REST client. Uses the account's Auth Token directly. The `TWILIO_AUTH_TOKEN`
+ * is the production credential for the account designated by `TWILIO_ACCOUNT_SID`
+ * (the kavora-crm Twilio account). Webhook signature verification also reads
+ * `TWILIO_AUTH_TOKEN`, so we only need one credential for both directions.
  */
 let cachedClient: ReturnType<typeof twilio> | null = null;
 
 export function getTwilioClient() {
   if (!twilioConfigured) {
     throw new Error(
-      "Twilio is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, " +
-        "TWILIO_API_KEY_SECRET, and TWILIO_AUTH_TOKEN in your environment.",
+      "Twilio is not configured. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in your environment.",
     );
   }
   if (!cachedClient) {
-    cachedClient = twilio(env.TWILIO_API_KEY_SID!, env.TWILIO_API_KEY_SECRET!, {
-      accountSid: env.TWILIO_ACCOUNT_SID!,
-    });
+    cachedClient = twilio(env.TWILIO_ACCOUNT_SID!, env.TWILIO_AUTH_TOKEN!);
   }
   return cachedClient;
 }

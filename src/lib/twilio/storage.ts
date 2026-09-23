@@ -19,7 +19,7 @@ function getSupabaseAdmin() {
 }
 
 /**
- * Download a Twilio recording (basic-authed via subaccount API key) and upload
+ * Download a Twilio recording (basic-authed via Account SID + Auth Token) and upload
  * it to Supabase Storage. Returns the storage path.
  */
 export async function downloadRecordingToStorage(opts: {
@@ -27,12 +27,12 @@ export async function downloadRecordingToStorage(opts: {
   recordingUrl: string;
   recordingSid: string;
 }): Promise<string> {
-  if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_API_KEY_SID || !env.TWILIO_API_KEY_SECRET) {
+  if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN) {
     throw new Error("Twilio not configured");
   }
   const authHeader =
     "Basic " +
-    Buffer.from(`${env.TWILIO_API_KEY_SID}:${env.TWILIO_API_KEY_SECRET}`).toString("base64");
+    Buffer.from(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`).toString("base64");
   const urlWithExt = `${opts.recordingUrl}.mp3`;
   const res = await fetch(urlWithExt, { headers: { Authorization: authHeader } });
   if (!res.ok) {
