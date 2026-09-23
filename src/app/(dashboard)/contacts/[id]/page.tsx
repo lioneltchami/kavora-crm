@@ -14,7 +14,7 @@ import {
 } from "@/db/schema";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { ContactTabs, TabsList, TabsTrigger, TabsContent } from "@/components/contacts/contact-tabs";
 import { Badge } from "@/components/ui/badge";
 import { formatPhoneForDisplay } from "@/lib/phone";
 import { ContactActions } from "@/components/contacts/contact-actions";
@@ -25,8 +25,16 @@ import { DraftOutreachButton } from "@/components/contacts/draft-outreach-button
 
 export const dynamic = "force-dynamic";
 
-export default async function ContactDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ContactDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const { id } = await params;
+  const sp = await searchParams;
+  const initialTab = sp.tab ?? "timeline";
 
   const contactRows = await db
     .select()
@@ -136,7 +144,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
         </Card>
       </div>
 
-      <Tabs defaultValue="timeline">
+      <ContactTabs defaultValue={initialTab}>
         <TabsList>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="sms">SMS</TabsTrigger>
@@ -222,7 +230,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
             ))
           )}
         </TabsContent>
-      </Tabs>
+      </ContactTabs>
     </div>
   );
 }

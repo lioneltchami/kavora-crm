@@ -1,12 +1,17 @@
 "use client";
 
-import { Phone, MessageSquare, MoreVertical } from "lucide-react";
+import { Phone, MessageSquare, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { startOutboundCall } from "@/actions/communications";
+import { deleteContact } from "@/actions/contacts";
 import { toast } from "sonner";
 
 export function ContactActions({ contactId, phone }: { contactId: string; phone: string | null }) {
   const disabled = !phone;
+  const router = useRouter();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   async function onCall() {
     try {
@@ -14,6 +19,17 @@ export function ContactActions({ contactId, phone }: { contactId: string; phone:
       toast.success(`Call placed — agent's cell is ringing. SID ${result.sid.slice(0, 10)}…`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not place call");
+    }
+  }
+
+  async function onDelete() {
+    if (!confirm("Delete this contact? This cannot be undone.")) return;
+    try {
+      await deleteContact(contactId);
+      toast.success("Contact deleted");
+      router.push("/contacts");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not delete contact");
     }
   }
 
@@ -26,16 +42,42 @@ export function ContactActions({ contactId, phone }: { contactId: string; phone:
         variant="outline"
         size="sm"
         disabled={disabled}
-        onClick={() => {
-          const el = document.querySelector<HTMLTextAreaElement>("[data-sms-composer] textarea");
-          el?.focus();
-        }}
+        onClick={() => router.push(`/contacts/${contactId}?tab=sms`)}
       >
         <MessageSquare className="mr-1 h-4 w-4" /> SMS
       </Button>
-      <Button variant="ghost" size="icon">
-        <MoreVertical className="h-4 w-4" />
-      </Button>
+      <div className="relative">
+        <Button variant="ghost" size="icon" onClick={() => setMenuOpen((v) => !v)} aria-label="More actions">
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+        {menuOpen && (
+          <div
+            className="absolute right-0 z-10 mt-1 w-44 rounded-md border bg-background py-1 shadow-md"
+            onMouseLeave={() => setMenuOpen(false)}
+          >
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted"
+              onClick={() => {
+                setMenuOpen(false);
+                router.push(`/contacts/${contactId}/edit`);
+              }}
+            >
+              <Pencil className="h-4 w-4" /> Edit contact
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-red-600 hover:bg-muted"
+              onClick={() => {
+                setMenuOpen(false);
+                void onDelete();
+              }}
+            >
+              <Trash2 className="h-4 w-4" /> Delete contact
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

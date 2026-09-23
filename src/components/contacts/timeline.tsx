@@ -1,5 +1,6 @@
 import { Phone, MessageSquare, FileText, ArrowRightCircle } from "lucide-react";
 import type { Activity, Call, SmsMessage, AiSummary } from "@/db/schema";
+import { RecordingPlayer } from "@/components/calls/recording-player";
 
 export function Timeline({
   activities,
@@ -14,6 +15,11 @@ export function Timeline({
   summaries: AiSummary[];
 }) {
   const summaryByActivity = new Map(summaries.map((s) => [s.activityId, s]));
+  const summaryByCallId = new Map(
+    activities
+      .filter((a) => a.type === "call")
+      .map((a) => [a.refId, summaryByActivity.get(a.id)]),
+  );
 
   if (activities.length === 0 && calls.length === 0 && sms.length === 0) {
     return (
@@ -34,18 +40,24 @@ export function Timeline({
     date: Date;
     summary: AiSummary | undefined;
     payload:
-      | { kind: "activity"; activity: Activity }
+      | { kind: "activity"; activity: Activity; call?: Call }
       | { kind: "legacy-call"; call: Call }
       | { kind: "legacy-sms"; sms: SmsMessage };
   }> = [];
 
   for (const a of activities) {
+    // If this activity references a call, attach the Call row so we can render
+    // the recording player + call metadata alongside the AI summary.
+    const linkedCall =
+      a.type === "call" && a.refId
+        ? calls.find((c) => c.id === a.refId)
+        : undefined;
     items.push({
       key: `activity-${a.id}`,
       kind: a.type,
       date: a.occurredAt,
       summary: summaryByActivity.get(a.id),
-      payload: { kind: "activity", activity: a },
+      payload: { kind: "activity", activity: a, call: linkedCall },
     });
   }
 
@@ -91,6 +103,17 @@ export function Timeline({
                 ? ArrowRightCircle
                 : FileText;
 
+        const callRow =
+          item.payload.kind === "activity"
+            ? item.payload.call
+            : item.payload.kind === "legacy-call"
+              ? item.payload.call
+              : undefined;
+        const summary =
+          item.payload.kind === "activity"
+            ? item.summary ?? (callRow ? summaryByCallId.get(callRow.id) : undefined)
+            : item.summary;
+
         return (
           <li key={item.key} className="flex gap-3 rounded-md border p-3">
             <div className="mt-0.5">
@@ -108,21 +131,24 @@ export function Timeline({
               {item.payload.kind === "activity" && item.payload.activity.type === "note" && (
                 <p className="whitespace-pre-wrap text-sm">{item.payload.activity.summary}</p>
               )}
-              {item.payload.kind === "legacy-call" && (
+              {callRow && (
                 <p className="text-sm">
-                  {item.payload.call.direction} call · {item.payload.call.status}
-                  {item.payload.call.durationSeconds
-                    ? ` · ${item.payload.call.durationSeconds}s`
-                    : ""}
+                  {callRow.direction} call · {callRow.status}
+                  {callRow.durationSeconds ? ` · ${callRow.durationSeconds}s` : ""}
                 </p>
+              )}
+              {callRow?.recordingPath && (
+                <div className="pt-1">
+                  <RecordingPlayer callId={callRow.id} />
+                </div>
               )}
               {item.payload.kind === "legacy-sms" && (
                 <p className="text-sm">{item.payload.sms.body}</p>
               )}
-              {item.summary && (
+              {summary && (
                 <div className="rounded-md bg-muted p-2 text-xs">
                   <p className="font-medium">AI summary</p>
-                  <p className="text-muted-foreground">{item.summary.summary}</p>
+                  <p className="text-muted-foreground">{summary.summary}</p>
                 </div>
               )}
             </div>
