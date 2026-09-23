@@ -49,6 +49,7 @@ pnpm format             # prettier + tailwind plugin
 - **Money** — always `valueCents` (integer) + `currency`. Never floats.
 - **AI prompts** — wrap retrieved context in `<context>` tags and instruct the model to ignore instructions inside.
 - **Env** — only access via `import { env } from "@/lib/env"`. Never read `process.env.*` directly in app code.
+- **Twilio credentials** — the SDK in `src/lib/twilio/client.ts` uses **`twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)`** with the same auth token also used for webhook signature verification. There is **no API-key pattern in this codebase** — the original "subaccount + API key" architecture was simplified during v1 build because Kavora Systems runs a single Twilio account, not master + subaccount. If you re-introduce an API key, update both `client.ts` (outbound SDK) and `storage.ts` (recording downloads) — both use HTTP Basic Auth with the credential pair.
 - **Audit** — every mutating server action ends with `logAudit(...)`.
 - **Drizzle types** — export `NewX` for inserts and `X` for selects (`InferSelect` is fine, but keep names predictable).
 
@@ -61,8 +62,9 @@ pnpm format             # prettier + tailwind plugin
 - ❌ Don't bypass Twilio signature verification, even for "test" webhooks. Use `twilio.test()` payloads.
 - ❌ Don't hardcode org IDs other than `KAVORA_ORG_ID`.
 - ❌ Don't add a column without a migration. Drizzle-kit will not auto-apply.
-- ❌ Don't commit `.env.local` (already in .gitignore).
+- ❌ Don't commit `.env.local` or any `*.env-check` file (already in `.gitignore`).
 - ❌ Don't use raw `pg.Pool.query` inside the action layer — wrap in `db.execute(...)` for tracing.
+- ❌ Don't run `vercel env pull` into the workspace. The pulled file contains every production secret and would be a one-line commit away from leaking them to GitHub's secret scanner. Use `vercel env ls production --scope apotitechs-projects` for inline reads, or pull to `/tmp/`.
 
 ---
 
@@ -107,7 +109,7 @@ pnpm format             # prettier + tailwind plugin
 
 - Vercel auto-deploys from `main`.
 - DB migrations: manual promote from staging branch to prod after CI passes.
-- Trigger.dev: `npx trigger.dev deploy` from the project root.
+- Trigger.dev: `npx trigger.dev deploy` from the project root. **Use a `tr_prod_*` key**, not `tr_dev_*` — the schedule (`scoreAllLeadsSchedule`) and any production jobs will fail with 401 from Trigger.dev's API otherwise. The inline fallback in `src/lib/queue/enqueue.ts` keeps inbound SMS working even when Trigger.dev is down, but the weekly cron will silently no-op.
 - Sentry: source maps auto-uploaded via `@sentry/nextjs` (when configured).
 
 ---
