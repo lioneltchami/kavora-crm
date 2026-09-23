@@ -44,3 +44,4 @@ src/db/migrations/meta/_journal.json.tmp
 .turbo
 .vercel
 *.tsbuildinfo
+.env.local-check
