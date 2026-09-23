@@ -25,8 +25,8 @@ export default async function InboxPage() {
         contactFirst: contacts.firstName,
         contactLast: contacts.lastName,
         contactPhone: contacts.phone,
-        total: sql<number>`COUNT(*) OVER (PARTITION BY ${smsMessages.contactId})::int`,
-        rn: sql<number>`ROW_NUMBER() OVER (PARTITION BY ${smsMessages.contactId} ORDER BY ${smsMessages.createdAt} DESC)::int`,
+        total: sql<number>`COUNT(*) OVER (PARTITION BY ${smsMessages.contactId})::int`.as("total"),
+        rn: sql<number>`ROW_NUMBER() OVER (PARTITION BY ${smsMessages.contactId} ORDER BY ${smsMessages.createdAt} DESC)::int`.as("rn"),
       })
       .from(smsMessages)
       .leftJoin(contacts, eq(contacts.id, smsMessages.contactId))
