@@ -13,22 +13,40 @@ export const dynamic = "force-dynamic";
  * Click a thread to expand the full conversation and reply.
  */
 export default async function InboxPage() {
-  // Latest inbound per contact + total message count.
+  // Latest message per contact + total count per thread. Window-function
+  // approach because GROUP BY can't carry body/createdAt without grouping by
+  // them too (which would lose the "latest" semantics).
+  const rankedThreads = db.$with("ranked_threads").as(
+    db
+      .select({
+        contactId: smsMessages.contactId,
+        lastBody: smsMessages.body,
+        lastAt: smsMessages.createdAt,
+        contactFirst: contacts.firstName,
+        contactLast: contacts.lastName,
+        contactPhone: contacts.phone,
+        total: sql<number>`COUNT(*) OVER (PARTITION BY ${smsMessages.contactId})::int`,
+        rn: sql<number>`ROW_NUMBER() OVER (PARTITION BY ${smsMessages.contactId} ORDER BY ${smsMessages.createdAt} DESC)::int`,
+      })
+      .from(smsMessages)
+      .leftJoin(contacts, eq(contacts.id, smsMessages.contactId))
+      .where(eq(smsMessages.orgId, KAVORA_ORG_ID)),
+  );
+
   const threads = await db
+    .with(rankedThreads)
     .select({
-      contactId: smsMessages.contactId,
-      lastBody: smsMessages.body,
-      lastAt: smsMessages.createdAt,
-      contactFirst: contacts.firstName,
-      contactLast: contacts.lastName,
-      contactPhone: contacts.phone,
-      total: sql<number>`COUNT(*)::int`,
+      contactId: rankedThreads.contactId,
+      lastBody: rankedThreads.lastBody,
+      lastAt: rankedThreads.lastAt,
+      contactFirst: rankedThreads.contactFirst,
+      contactLast: rankedThreads.contactLast,
+      contactPhone: rankedThreads.contactPhone,
+      total: rankedThreads.total,
     })
-    .from(smsMessages)
-    .leftJoin(contacts, eq(contacts.id, smsMessages.contactId))
-    .where(eq(smsMessages.orgId, KAVORA_ORG_ID))
-    .groupBy(smsMessages.contactId, contacts.firstName, contacts.lastName, contacts.phone)
-    .orderBy(desc(smsMessages.createdAt))
+    .from(rankedThreads)
+    .where(eq(rankedThreads.rn, 1))
+    .orderBy(desc(rankedThreads.lastAt))
     .limit(50);
 
   return (
