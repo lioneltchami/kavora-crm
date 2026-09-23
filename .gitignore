@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Local env
+.env
+.env.local
+.env.*.local
+
+# Build output
+.next/
+out/
+build/
+dist/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+coverage/
+
+# Drizzle
+src/db/migrations/meta/_journal.json.tmp
+
+# Trigger.dev
+.trigger/
+
+# Misc
+.turbo
+.vercel
+*.tsbuildinfo
