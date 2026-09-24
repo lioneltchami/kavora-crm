@@ -160,12 +160,6 @@ export function EditContactSheet({
       .filter((r) => r.phone.trim().length > 0)
       .map((r) => ({ phone: r.phone.trim(), type: r.type, isPrimary: r.isPrimary }));
 
-    // NOTE: `updateContact` only reads the legacy `email` / `phone` scalars
-    // (see src/actions/contacts.ts). The JSON arrays below are sent for
-    // forward-compat — once `updateContact` learns to consume them (cross-slice
-    // follow-up ticket), this form won't need to change. Until then, primary
-    // edits persist via the legacy scalars and non-primary row changes are
-    // silently dropped.
     fd.set("emails", JSON.stringify(emailRows));
     fd.set("phones", JSON.stringify(phoneRows));
 
