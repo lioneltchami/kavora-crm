@@ -174,7 +174,8 @@ export function NewContactButton() {
         title="New contact"
         onSubmit={onSubmit}
         submitLabel={submitting ? "Creating…" : "Create contact"}
-        isSubmitting={submitting || formInvalid}
+        isSubmitting={submitting}
+        submitDisabled={formInvalid}
         formId="new-contact-form"
       >
         <div className="grid grid-cols-2 gap-3">

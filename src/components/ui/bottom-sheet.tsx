@@ -18,6 +18,7 @@ export interface BottomSheetProps {
   onSubmit: () => void | Promise<void>;
   submitLabel?: string;
   isSubmitting?: boolean;
+  submitDisabled?: boolean;
   formId: string;
 }
 
@@ -29,6 +30,7 @@ export function BottomSheet({
   onSubmit,
   submitLabel = "Save",
   isSubmitting = false,
+  submitDisabled,
   formId,
 }: BottomSheetProps) {
   return (
@@ -63,7 +65,7 @@ export function BottomSheet({
           <Button
             type="submit"
             form={formId}
-            disabled={isSubmitting}
+            disabled={isSubmitting || submitDisabled}
             className="flex-1 h-12"
           >
             {submitLabel}
