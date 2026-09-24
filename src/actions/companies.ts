@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, desc, eq, ilike, or } from "drizzle-orm";
+import { and, asc, eq, ilike, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { companies } from "@/db/schema";
+import { companiesSummaryView, type CompanySummary } from "@/db/views";
 import { requireDbUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 
@@ -15,19 +16,27 @@ const companySchema = z.object({
   size: z.string().max(64).optional().nullable(),
 });
 
-export async function listCompanies(opts: { q?: string; limit?: number } = {}) {
+export async function listCompanies(
+  opts: { q?: string; limit?: number } = {},
+): Promise<CompanySummary[]> {
   const { ctx } = await requireDbUser();
   const limit = opts.limit ?? 100;
-  const whereParts = [eq(companies.orgId, ctx.orgId)];
+  const whereParts = [eq(companiesSummaryView.org_id, ctx.orgId)];
   if (opts.q && opts.q.trim()) {
     const q = `%${opts.q.trim()}%`;
-    whereParts.push(or(ilike(companies.name, q), ilike(companies.domain, q))!);
+    whereParts.push(
+      or(
+        ilike(companiesSummaryView.name, q),
+        ilike(companiesSummaryView.domain, q),
+        ilike(companiesSummaryView.industry, q),
+      )!,
+    );
   }
   return db
     .select()
-    .from(companies)
+    .from(companiesSummaryView)
     .where(and(...whereParts))
-    .orderBy(desc(companies.updatedAt))
+    .orderBy(asc(companiesSummaryView.name))
     .limit(limit);
 }
 

@@ -6,6 +6,7 @@ import { eq, and, ilike, or, desc, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { contacts, type Contact } from "@/db/schema";
+import { contactsSummaryView, type ContactSummary } from "@/db/views";
 import { requireDbUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { toE164 } from "@/lib/phone";
@@ -24,29 +25,29 @@ export async function listContacts(opts: {
   q?: string;
   status?: "lead" | "active" | "customer" | "archived";
   limit?: number;
-}): Promise<Contact[]> {
+}): Promise<ContactSummary[]> {
   const { ctx } = await requireDbUser();
   const limit = opts.limit ?? 100;
 
-  const whereParts = [eq(contacts.orgId, ctx.orgId), isNull(contacts.deletedAt)];
-  if (opts.status) whereParts.push(eq(contacts.status, opts.status));
+  const whereParts = [eq(contactsSummaryView.org_id, ctx.orgId)];
+  if (opts.status) whereParts.push(eq(contactsSummaryView.status, opts.status));
   if (opts.q && opts.q.trim().length > 0) {
     const q = `%${opts.q.trim()}%`;
     whereParts.push(
       or(
-        ilike(contacts.firstName, q),
-        ilike(contacts.lastName, q),
-        ilike(contacts.email, q),
-        ilike(contacts.phone, q),
+        ilike(contactsSummaryView.first_name, q),
+        ilike(contactsSummaryView.last_name, q),
+        ilike(contactsSummaryView.email, q),
+        ilike(contactsSummaryView.phone, q),
       )!,
     );
   }
 
   return db
     .select()
-    .from(contacts)
+    .from(contactsSummaryView)
     .where(and(...whereParts))
-    .orderBy(desc(contacts.updatedAt))
+    .orderBy(desc(contactsSummaryView.updated_at))
     .limit(limit);
 }
 
