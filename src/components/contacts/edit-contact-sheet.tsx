@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -29,11 +29,11 @@ function capitalize(s: string): string {
 }
 
 function emptyEmailRow(): EmailRow {
-  return { email: "", type: "work", isPrimary: false };
+  return { email: "", type: "work", isPrimary: true };
 }
 
 function emptyPhoneRow(): PhoneRow {
-  return { phone: "", type: "work", isPrimary: false };
+  return { phone: "", type: "work", isPrimary: true };
 }
 
 function withPrimary<T extends { isPrimary: boolean }>(rows: T[]): T[] {
@@ -53,6 +53,9 @@ export function EditContactSheet({
   const [emails, setEmails] = useState<EmailRow[]>([emptyEmailRow()]);
   const [phones, setPhones] = useState<PhoneRow[]>([emptyPhoneRow()]);
   const router = useRouter();
+  // Suppress stale `toast.error` if the user dismisses the sheet mid-save.
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -157,6 +160,12 @@ export function EditContactSheet({
       .filter((r) => r.phone.trim().length > 0)
       .map((r) => ({ phone: r.phone.trim(), type: r.type, isPrimary: r.isPrimary }));
 
+    // NOTE: `updateContact` only reads the legacy `email` / `phone` scalars
+    // (see src/actions/contacts.ts). The JSON arrays below are sent for
+    // forward-compat — once `updateContact` learns to consume them (cross-slice
+    // follow-up ticket), this form won't need to change. Until then, primary
+    // edits persist via the legacy scalars and non-primary row changes are
+    // silently dropped.
     fd.set("emails", JSON.stringify(emailRows));
     fd.set("phones", JSON.stringify(phoneRows));
 
@@ -174,9 +183,11 @@ export function EditContactSheet({
       router.push(`/contacts/${contact.id}`);
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not save contact");
+      if (mountedRef.current) {
+        toast.error(err instanceof Error ? err.message : "Could not save contact");
+      }
     } finally {
-      setSaving(false);
+      if (mountedRef.current) setSaving(false);
     }
   }
 
@@ -241,6 +252,7 @@ export function EditContactSheet({
                 disabled={row.isPrimary || saving}
                 onClick={() => setPrimaryEmail(i)}
                 title={row.isPrimary ? "Already primary" : "Make primary"}
+                aria-pressed={row.isPrimary}
               >
                 {row.isPrimary ? "Primary" : "Make primary"}
               </Button>
@@ -307,6 +319,7 @@ export function EditContactSheet({
                 disabled={row.isPrimary || saving}
                 onClick={() => setPrimaryPhone(i)}
                 title={row.isPrimary ? "Already primary" : "Make primary"}
+                aria-pressed={row.isPrimary}
               >
                 {row.isPrimary ? "Primary" : "Make primary"}
               </Button>
