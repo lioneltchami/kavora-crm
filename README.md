@@ -6,8 +6,11 @@ A custom CRM for **Kavora Systems** (AI agency) with a working Twilio phone numb
 - 🤖 AI summaries on every call/SMS, lead scoring, AI-drafted outreach (with "why I picked this" citations), and RAG over past conversations
 - 🧱 Single-tenant data model that can extend to multi-tenant later without a rewrite
 - 🔒 Signed Twilio webhooks, server-only env access, audit log on all mutations
+- 🎛️ shadcn/ui admin shell — floating sidebar, `Cmd/Ctrl+B` collapse, mobile Sheet drawer
+- 🔗 Contact dedupe — atomic `merge_contacts` PL/pgSQL function + Server Action
+- ↩️ Soft-delete with Undo — `deleted_at` column + Sonner toast with "Undo" affordance
 
-> **Status:** v1 shipped — working toll-free number live at `crm.kavora.systems`. All five build phases complete; AI features (summaries, drafts, lead scoring) activate automatically when their keys are present and degrade gracefully to "AI not configured" otherwise. See [Known limitations](#known-limitations) below.
+> **Status:** v1.5 shipped — Tier 1 quick wins (sidebar, merge, undoable soft-delete) live at `crm.kavora.systems`. All five v1 build phases complete; AI features (summaries, drafts, lead scoring) activate automatically when their keys are present and degrade gracefully to "AI not configured" otherwise. See [Known limitations](#known-limitations) below. The Tier 2/3 roadmap from the atomic-crm research is in [docs/research/atomic-crm/apply-to-kavora.md](./docs/research/atomic-crm/apply-to-kavora.md).
 
 ---
 
@@ -30,6 +33,9 @@ For a guided walkthrough of provisioning every external account (Twilio, Clerk, 
 
 | Capability | Where it lives |
 |---|---|
+| Admin shell — floating sidebar, Cmd/Ctrl+B collapse, mobile Sheet drawer | `src/components/dashboard/sidebar.tsx` + `src/components/ui/sidebar.tsx` |
+| Brand header + Clerk user footer in the sidebar | `src/components/dashboard/sidebar-brand.tsx` + `sidebar-user.tsx` |
+| Sidebar nav config (main + settings) + active-state helper | `src/lib/navigation.ts` |
 | Inbound voice → team cells (parallel dial) → voicemail fallback | `src/app/api/twilio/voice` + `src/lib/twilio/twiml.ts` |
 | Outbound calls with "press 1 to connect" gate | `src/actions/communications.ts` + `src/app/api/twilio/dial-gate*` |
 | Inbound SMS with auto-ack | `src/app/api/twilio/sms` |
@@ -39,6 +45,8 @@ For a guided walkthrough of provisioning every external account (Twilio, Clerk, 
 | Lead scoring cron | `src/trigger/inbound-sms.ts` → `scoreAllLeadsSchedule` (weekly Sunday 6am UTC, contacts-with-activity-in-last-30d only, concurrency 3) |
 | Drag-drop deal kanban | `src/components/deals/kanban-board.tsx` |
 | Activity timeline | `src/components/contacts/timeline.tsx` |
+| Contact dedupe — `merge_contacts(winner, loser, org)` atomic | `src/db/migrations/0002_merge_contacts.sql` + `src/actions/merge-contacts.ts` |
+| Soft-delete with Undo toast — Sonner-backed `undoable({...})` helper | `src/lib/undoable.ts` + `src/db/migrations/0003_soft_delete_contacts.sql` + `src/actions/contacts.ts` (`softDeleteContact` / `restoreContact`) |
 | Audit log | `src/lib/audit.ts` |
 
 ---
@@ -69,32 +77,42 @@ src/
 │   ├── sign-in/, sign-up/
 │   ├── layout.tsx, page.tsx, globals.css
 ├── components/
-│   ├── ui/                           # shadcn primitives
-│   ├── dashboard/                    # sidebar, topbar, page-header
-│   ├── contacts/                     # composer, timeline, AI actions
+│   ├── ui/                           # shadcn primitives (sidebar, sheet, dropdown, ...)
+│   ├── dashboard/                    # sidebar shell, brand, user footer, page-header, hot-leads
+│   ├── contacts/                     # composer, timeline, AI actions, contact-actions (undoable delete)
 │   ├── deals/                        # kanban, new-deal dialog
 │   ├── inbox/                        # sms composer
 │   ├── calls/                        # recording player
 │   └── settings/                     # phone number actions, etc.
-├── actions/                          # server actions
+├── actions/                          # server actions (contacts, companies, deals, ..., merge-contacts)
+├── hooks/
+│   └── use-mobile.tsx                # 768px breakpoint detector (used by shadcn Sidebar)
 ├── lib/
 │   ├── auth.ts                       # Clerk → DB
 │   ├── audit.ts                      # write to audit_log
 │   ├── env.ts                        # zod-validated env
+│   ├── navigation.ts                 # sidebar main + settings nav items, isNavItemActive()
 │   ├── phone.ts                      # E.164 helpers
+│   ├── undoable.ts                   # Sonner undo toast wrapper (perform + undo + Undo button)
 │   ├── twilio/                       # client, signature, TwiML, provisioning, storage
 │   ├── ai/                           # Deepgram, Anthropic, embeddings, drafts, scoring
 │   └── queue/enqueue.ts              # Trigger.dev dispatcher (with inline fallback)
 ├── db/
-│   ├── schema.ts                     # Drizzle schema (all tables)
+│   ├── schema.ts                     # Drizzle schema (all tables, contacts.deletedAt for soft-delete)
 │   ├── index.ts                      # pg + drizzle client
-│   └── migrations/0001_init.sql      # first migration (includes pgvector + Kavora org seed)
+│   └── migrations/
+│       ├── 0001_init.sql             # first migration (includes pgvector + Kavora org seed)
+│       ├── 0002_merge_contacts.sql   # PL/pgSQL merge function (T1-2)
+│       └── 0003_soft_delete_contacts.sql  # deleted_at column + active-row partial index (T1-3)
 ├── trigger/                          # Trigger.dev task definitions
 └── middleware.ts                     # Clerk auth middleware
 docs/
 ├── SETUP.md                          # account provisioning + local dev
 ├── ARCHITECTURE.md                   # system design, data flow, decisions
-└── AGENTS.md                         # conventions for future agents
+├── AGENTS.md                         # conventions for future agents
+├── research/atomic-crm/              # source-of-truth roadmap + borrow-from notes
+│   └── apply-to-kavora.md            # 8-week Tier 1/2/3 plan (what's done, what's next)
+└── reviews/                          # per-PR blind review reports
 ```
 
 ---

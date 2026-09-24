@@ -7,8 +7,9 @@ A guide for any agent (human or AI) picking up this project. Read this before yo
 ## Project at a glance
 
 - **What**: Single-tenant CRM for Kavora Systems with a working Twilio number + AI features.
-- **Stack**: Next.js 15 (App Router) · Supabase Postgres (Drizzle) · Clerk · Twilio · Deepgram · Anthropic · Voyage · Trigger.dev · Tailwind + shadcn/ui · Vercel.
+- **Stack**: Next.js 15 (App Router) · Supabase Postgres (Drizzle) · Clerk · Twilio · Deepgram · Anthropic · Voyage · Trigger.dev · Tailwind + shadcn/ui · Sonner · Vercel.
 - **Tenancy**: v1 is single-tenant. Every table has `orgId` (always `"kavora"`). To go multi-tenant, flip RLS policies + add Clerk org claim.
+- **Tier-1 quick wins shipped (v1.5):** shadcn/ui sidebar shell + `merge_contacts` PL/pgSQL dedupe + Sonner `undoable()` soft-delete. The full roadmap (Tier 2 / Tier 3) lives in [`docs/research/atomic-crm/apply-to-kavora.md`](./research/atomic-crm/apply-to-kavora.md) — that doc is the source of truth for what's next.
 
 ---
 
@@ -38,6 +39,9 @@ pnpm format             # prettier + tailwind plugin
 | Add a background job | `src/trigger/<job>.ts` + register in `trigger.config.ts` |
 | Add a UI primitive | `src/components/ui/<name>.tsx` (shadcn-style) |
 | Add a new AI provider | `src/lib/ai/<provider>.ts` and wire into `src/lib/ai/embed.ts` / `draft.ts` |
+| Add a sidebar nav item | `src/lib/navigation.ts` (mainNavItems or settingsNavItems) — never edit `sidebar.tsx` |
+| Wire an Undo button onto a destructive action | `undoable({ message, perform, undo, type? })` from `@/lib/undoable` |
+| Merge two contacts | `mergeContact({ winnerId, loserId })` from `@/actions/merge-contacts` (calls the PL/pgSQL function `merge_contacts(...)` from `src/db/migrations/0002_merge_contacts.sql`) |
 
 ---
 
@@ -52,6 +56,9 @@ pnpm format             # prettier + tailwind plugin
 - **Twilio credentials** — the SDK in `src/lib/twilio/client.ts` uses **`twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)`** with the same auth token also used for webhook signature verification. There is **no API-key pattern in this codebase** — the original "subaccount + API key" architecture was simplified during v1 build because Kavora Systems runs a single Twilio account, not master + subaccount. If you re-introduce an API key, update both `client.ts` (outbound SDK) and `storage.ts` (recording downloads) — both use HTTP Basic Auth with the credential pair.
 - **Audit** — every mutating server action ends with `logAudit(...)`.
 - **Drizzle types** — export `NewX` for inserts and `X` for selects (`InferSelect` is fine, but keep names predictable).
+- **Soft-delete contacts** — the `contacts` table has `deletedAt timestamptz NULL`. **Every read path that touches contacts MUST filter `isNull(contacts.deletedAt)`** (or use the `getContact` / `listContacts` actions, which already do). Including: list pages, detail pages, the company-detail contact list, the dashboard hot-leads + total, the analytics tile, the dial-gate routing lookup, the inbound phone `contact-lookup`, the lead-scoring query, and the outbound call/SMS `communications` actions. If you add a new contact query, add the filter.
+- **Undoable mutations** — destructive UI actions that the user might want to reverse go through `undoable({ message, perform, undo, type? })` from `@/lib/undoable`. The helper shows a Sonner toast with an "Undo" button that calls `undo()` if clicked before auto-dismiss. Do not roll your own confirm-then-toast pattern — reuse the helper so the Undo affordance is consistent.
+- **Sidebar nav** — `src/lib/navigation.ts` is the single source of truth for main + settings nav items and the `isNavItemActive()` helper. Don't add nav items inline in `src/components/dashboard/sidebar.tsx`.
 
 ---
 
@@ -65,6 +72,9 @@ pnpm format             # prettier + tailwind plugin
 - ❌ Don't commit `.env.local` or any `*.env-check` file (already in `.gitignore`).
 - ❌ Don't use raw `pg.Pool.query` inside the action layer — wrap in `db.execute(...)` for tracing.
 - ❌ Don't run `vercel env pull` into the workspace. The pulled file contains every production secret and would be a one-line commit away from leaking them to GitHub's secret scanner. Use `vercel env ls production --scope apotitechs-projects` for inline reads, or pull to `/tmp/`.
+- ❌ Don't add a contact query without `isNull(contacts.deletedAt)` (or going through `getContact` / `listContacts`). Soft-deleted rows must stay invisible.
+- ❌ Don't roll your own confirm-then-toast pattern for destructive actions. Use `undoable({...})` from `@/lib/undoable` so the Undo affordance is consistent.
+- ❌ Don't hardcode nav items in `src/components/dashboard/sidebar.tsx`. Update `src/lib/navigation.ts` instead.
 
 ---
 
@@ -93,6 +103,7 @@ pnpm format             # prettier + tailwind plugin
 - **Never edit a migration after it's been applied to staging/prod.** Add a new one.
 - For vector columns, write raw SQL in the migration file. Drizzle doesn't yet ship first-class pgvector types.
 - After editing `schema.ts`, run `pnpm db:generate` and commit the generated SQL.
+- **PL/pgSQL functions live in their own migration.** Atomic-crm-style features (merge, dedupe, anything that needs to be atomic server-side) go in `src/db/migrations/00XX_<name>.sql` as a `CREATE OR REPLACE FUNCTION` block, then the Server Action wrapper lives in `src/actions/<name>.ts` and calls the function via `db.execute(sql\`SELECT <name>(...)\`)`. Mark the function `SECURITY DEFINER` and pin `search_path = public, pg_temp` at the top of the body. The Server Action is the auth + audit + revalidatePath boundary; the SQL is the data boundary.
 
 ---
 

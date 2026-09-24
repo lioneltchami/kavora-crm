@@ -77,6 +77,23 @@ Tables:
 
 Money is stored as `value_cents` (integer) + `currency` (ISO 4217). Phone numbers are always E.164.
 
+### Soft-delete (contacts only)
+
+`contacts.deleted_at timestamptz NULL` — `NULL` means active. Soft-delete via `softDeleteContact(id)`; restore via `restoreContact(id)`. Every read path that touches contacts (list / detail / company-detail / dashboard hot-leads / analytics tile / dial-gate routing / inbound phone lookup / lead scoring / outbound call + SMS) **must** filter `isNull(contacts.deletedAt)`. The `getContact` and `listContacts` Server Actions already do. UI surfaces `undoable({...})` from `@/lib/undoable` so the toast carries an "Undo" button that calls `restoreContact` if clicked before the 5-second auto-dismiss.
+
+### Dedupe — `merge_contacts` PL/pgSQL function
+
+`src/db/migrations/0002_merge_contacts.sql` defines `merge_contacts(winner_id uuid, loser_id uuid, p_org_id varchar) RETURNS jsonb`. Atomic transaction:
+
+1. Guard rails: same org, both exist, winner ≠ loser.
+2. Reassign every FK referencing the loser to the winner (`notes`, `deals`, `calls`, `sms_messages`, `activities`, `ai_drafts`, `lead_scores`).
+3. `COALESCE(winner, loser)` for single-value scalars (`email`, `phone`, `profile_notes`, `source`, `company_id`, `owner_user_id`, `last_name`).
+4. Copy `contact_tags` rows from loser to winner via `INSERT ... ON CONFLICT DO NOTHING`.
+5. Delete the loser.
+6. Return jsonb `{ winner_id, loser_id, reassigned_*, copied_tags }`.
+
+`SECURITY DEFINER` + `search_path = public, pg_temp` pinning. The Server Action wrapper at `src/actions/merge-contacts.ts` is the auth + audit + revalidatePath boundary.
+
 ---
 
 ## End-to-end flows
@@ -177,7 +194,13 @@ Money is stored as `value_cents` (integer) + `currency` (ISO 4217). Phone number
 
 ---
 
-## Roadmap (post-v1)
+## Roadmap
+
+The Tier 1 quick wins (T1-1 sidebar shell, T1-2 `merge_contacts`, T1-3 Sonner `undoable` soft-delete) shipped as v1.5. The Tier 2/3 plan from the atomic-crm research is the source of truth for what's next:
+
+→ **[docs/research/atomic-crm/apply-to-kavora.md](./research/atomic-crm/apply-to-kavora.md)** — full Tier 1 / Tier 2 / Tier 3 breakdown with scores, effort estimates, dependencies, and the recommended 8-week schedule.
+
+Backlog (not on the v2 path):
 
 - Email integration (Gmail/MS Graph OAuth, SendGrid send)
 - WhatsApp via Twilio Conversations
