@@ -236,24 +236,84 @@ export async function updateContact(id: string, formData: FormData) {
     status: formData.get("status") || undefined,
   });
 
+  const rawEmails = formData.get("emails");
+  const rawPhones = formData.get("phones");
+  const hasChannelArrays =
+    typeof rawEmails === "string" || typeof rawPhones === "string";
+
   const update: Record<string, unknown> = { updatedAt: new Date() };
   if (parsed.firstName !== undefined) update.firstName = parsed.firstName;
   if (parsed.lastName !== undefined) update.lastName = parsed.lastName;
-  if (parsed.email !== undefined) update.email = parsed.email || null;
-  if (parsed.phone !== undefined) update.phone = parsed.phone ? toE164(parsed.phone) : null;
+  if (!hasChannelArrays) {
+    if (parsed.email !== undefined) update.email = parsed.email || null;
+    if (parsed.phone !== undefined)
+      update.phone = parsed.phone ? toE164(parsed.phone) : null;
+  }
   if (parsed.companyId !== undefined) update.companyId = parsed.companyId ?? null;
   if (parsed.source !== undefined) update.source = parsed.source ?? null;
   if (parsed.status !== undefined) update.status = parsed.status;
-
-  const newEmail = parsed.email !== undefined ? parsed.email || null : undefined;
-  const newPhone =
-    parsed.phone !== undefined ? (parsed.phone ? toE164(parsed.phone) : null) : undefined;
 
   await db.transaction(async (tx) => {
     await tx
       .update(contacts)
       .set(update)
       .where(and(eq(contacts.id, id), eq(contacts.orgId, ctx.orgId)));
+
+    if (hasChannelArrays) {
+      const emailsRaw: unknown = rawEmails ? JSON.parse(rawEmails as string) : [];
+      const phonesRaw: unknown = rawPhones ? JSON.parse(rawPhones as string) : [];
+      const emailsParsed = z.array(emailInputSchema).parse(
+        Array.isArray(emailsRaw) ? emailsRaw : [],
+      );
+      const phonesParsed = z.array(phoneInputSchema).parse(
+        Array.isArray(phonesRaw) ? phonesRaw : [],
+      );
+      const phonesNormalized = phonesParsed.map((p) => {
+        const e164 = toE164(p.phone);
+        if (!e164) throw new Error(`Invalid phone number: ${p.phone}`);
+        return { ...p, phone: e164 };
+      });
+      const primaryEmail =
+        emailsParsed.find((e) => e.isPrimary)?.email ??
+        emailsParsed[0]?.email ??
+        null;
+      const primaryPhone =
+        phonesNormalized.find((p) => p.isPrimary)?.phone ??
+        phonesNormalized[0]?.phone ??
+        null;
+
+      await tx.delete(contactEmails).where(eq(contactEmails.contactId, id));
+      await tx.delete(contactPhones).where(eq(contactPhones.contactId, id));
+      if (emailsParsed.length > 0) {
+        await tx.insert(contactEmails).values(
+          emailsParsed.map((e) => ({
+            contactId: id,
+            email: e.email,
+            type: e.type,
+            isPrimary: e.isPrimary,
+          })),
+        );
+      }
+      if (phonesNormalized.length > 0) {
+        await tx.insert(contactPhones).values(
+          phonesNormalized.map((p) => ({
+            contactId: id,
+            phoneE164: p.phone,
+            type: p.type,
+            isPrimary: p.isPrimary,
+          })),
+        );
+      }
+      await tx
+        .update(contacts)
+        .set({ email: primaryEmail, phone: primaryPhone })
+        .where(and(eq(contacts.id, id), eq(contacts.orgId, ctx.orgId)));
+      return;
+    }
+
+    const newEmail = parsed.email !== undefined ? parsed.email || null : undefined;
+    const newPhone =
+      parsed.phone !== undefined ? (parsed.phone ? toE164(parsed.phone) : null) : undefined;
 
     if (newEmail !== undefined) {
       await tx
