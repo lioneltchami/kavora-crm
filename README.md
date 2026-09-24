@@ -9,8 +9,12 @@ A custom CRM for **Kavora Systems** (AI agency) with a working Twilio phone numb
 - 🎛️ shadcn/ui admin shell — floating sidebar, `Cmd/Ctrl+B` collapse, mobile Sheet drawer
 - 🔗 Contact dedupe — atomic `merge_contacts` PL/pgSQL function + Server Action
 - ↩️ Soft-delete with Undo — `deleted_at` column + Sonner toast with "Undo" affordance
+- 🗄️ DB summary views — `contacts_summary` + `companies_summary` with embedded aggregates (no N+1 on list pages)
+- 📱 Mobile-first list pages — `<List>` + `<ListContent>` split with `useIsMobile()` variant switching
+- 📇 Multi-value contact channels — `contact_emails` + `contact_phones` tables with type + is_primary, E.164 CHECK
+- 📜 Bottom-sheet create/edit — sticky footer Save button, full-height on every viewport
 
-> **Status:** v1.5 shipped — Tier 1 quick wins (sidebar, merge, undoable soft-delete) live at `crm.kavora.systems`. All five v1 build phases complete; AI features (summaries, drafts, lead scoring) activate automatically when their keys are present and degrade gracefully to "AI not configured" otherwise. See [Known limitations](#known-limitations) below. The Tier 2/3 roadmap from the atomic-crm research is in [docs/research/atomic-crm/apply-to-kavora.md](./docs/research/atomic-crm/apply-to-kavora.md).
+> **Status:** v1.7 shipped — Tier 1 + first four Tier-2 items (sidebar, merge, undoable soft-delete, DB views, mobile list split, multi-value contact channels, bottom-sheet dialogs) live at `crm.kavora.systems`. All five v1 build phases complete; AI features (summaries, drafts, lead scoring) activate automatically when their keys are present and degrade gracefully to "AI not configured" otherwise. See [Known limitations](#known-limitations) below. The remaining Tier 2/3 roadmap is in [docs/research/atomic-crom/apply-to-kavora.md](./docs/research/atomic-crm/apply-to-kavora.md).
 
 ---
 
@@ -19,9 +23,11 @@ A custom CRM for **Kavora Systems** (AI agency) with a working Twilio phone numb
 ```bash
 pnpm install
 cp .env.example .env.local          # fill in the values (see SETUP.md)
-pnpm db:migrate                     # apply schema to Supabase Postgres
+node scripts/apply-pending-migrations.mjs   # idempotent migration runner
 pnpm dev
 ```
+
+Migrations are **hand-written SQL** (not `drizzle-kit generate`) because the migration files include features the Drizzle TS schema can't express (PL/pgSQL functions, views, partial indexes, CHECK constraints). The runner is idempotent: each migration declares its own "already applied?" signature check (function exists, column exists, view/table exists) before applying. CI auto-applies on push to `main` via `.github/workflows/migrate.yml`. See `docs/AGENTS.md` §Deployment for the full flow.
 
 Then visit [http://localhost:3000](http://localhost:3000) and sign in with Clerk.
 
@@ -36,6 +42,10 @@ For a guided walkthrough of provisioning every external account (Twilio, Clerk, 
 | Admin shell — floating sidebar, Cmd/Ctrl+B collapse, mobile Sheet drawer | `src/components/dashboard/sidebar.tsx` + `src/components/ui/sidebar.tsx` |
 | Brand header + Clerk user footer in the sidebar | `src/components/dashboard/sidebar-brand.tsx` + `sidebar-user.tsx` |
 | Sidebar nav config (main + settings) + active-state helper | `src/lib/navigation.ts` |
+| List pages with mobile variants — `<List>` / `<ListContent>` split via `useIsMobile()` | `src/components/contacts/contact-list*.tsx` + `src/components/companies/company-list*.tsx` |
+| DB summary views — `contacts_summary` + `companies_summary` with embedded `nb_deals` / `nb_calls` / `last_activity_at` aggregates | `src/db/migrations/0004_summary_views.sql` + `src/db/views.ts` + `listContacts` / `listCompanies` |
+| Bottom-sheet create/edit dialogs — sticky footer Save, full-height on every viewport | `src/components/ui/bottom-sheet.tsx` (used by NewContactButton, NewCompanyButton, NewDealButton, edit-contact-sheet) |
+| Multi-value contact emails + phones — `contact_emails` + `contact_phones` tables with type + is_primary, E.164 CHECK | `src/db/migrations/0005_contact_emails_phones.sql` + `src/db/schema.ts` + 8 new Server Actions in `src/actions/contacts.ts` |
 | Inbound voice → team cells (parallel dial) → voicemail fallback | `src/app/api/twilio/voice` + `src/lib/twilio/twiml.ts` |
 | Outbound calls with "press 1 to connect" gate | `src/actions/communications.ts` + `src/app/api/twilio/dial-gate*` |
 | Inbound SMS with auto-ack | `src/app/api/twilio/sms` |
@@ -47,6 +57,7 @@ For a guided walkthrough of provisioning every external account (Twilio, Clerk, 
 | Activity timeline | `src/components/contacts/timeline.tsx` |
 | Contact dedupe — `merge_contacts(winner, loser, org)` atomic | `src/db/migrations/0002_merge_contacts.sql` + `src/actions/merge-contacts.ts` |
 | Soft-delete with Undo toast — Sonner-backed `undoable({...})` helper | `src/lib/undoable.ts` + `src/db/migrations/0003_soft_delete_contacts.sql` + `src/actions/contacts.ts` (`softDeleteContact` / `restoreContact`) |
+| Idempotent migration runner + GH Actions auto-apply | `scripts/apply-pending-migrations.mjs` + `.github/workflows/migrate.yml` |
 | Audit log | `src/lib/audit.ts` |
 
 ---
@@ -77,10 +88,11 @@ src/
 │   ├── sign-in/, sign-up/
 │   ├── layout.tsx, page.tsx, globals.css
 ├── components/
-│   ├── ui/                           # shadcn primitives (sidebar, sheet, dropdown, ...)
+│   ├── ui/                           # shadcn primitives (sidebar, sheet, dropdown, bottom-sheet, ...)
 │   ├── dashboard/                    # sidebar shell, brand, user footer, page-header, hot-leads
-│   ├── contacts/                     # composer, timeline, AI actions, contact-actions (undoable delete)
-│   ├── deals/                        # kanban, new-deal dialog
+│   ├── contacts/                     # composer, timeline, AI actions, contact-list + content + content-mobile, edit-contact-sheet
+│   ├── companies/                    # company-list + content + content-mobile (card grid)
+│   ├── deals/                        # kanban, new-deal dialog (now BottomSheet)
 │   ├── inbox/                        # sms composer
 │   ├── calls/                        # recording player
 │   └── settings/                     # phone number actions, etc.
@@ -94,16 +106,22 @@ src/
 │   ├── navigation.ts                 # sidebar main + settings nav items, isNavItemActive()
 │   ├── phone.ts                      # E.164 helpers
 │   ├── undoable.ts                   # Sonner undo toast wrapper (perform + undo + Undo button)
+│   ├── views.ts                      # Drizzle pgView type defs for contacts_summary + companies_summary
 │   ├── twilio/                       # client, signature, TwiML, provisioning, storage
 │   ├── ai/                           # Deepgram, Anthropic, embeddings, drafts, scoring
 │   └── queue/enqueue.ts              # Trigger.dev dispatcher (with inline fallback)
 ├── db/
-│   ├── schema.ts                     # Drizzle schema (all tables, contacts.deletedAt for soft-delete)
+│   ├── schema.ts                     # Drizzle schema (incl. contact_emails + contact_phones tables)
+│   ├── views.ts                      # pgView() for the summary views
 │   ├── index.ts                      # pg + drizzle client
 │   └── migrations/
 │       ├── 0001_init.sql             # first migration (includes pgvector + Kavora org seed)
 │       ├── 0002_merge_contacts.sql   # PL/pgSQL merge function (T1-2)
-│       └── 0003_soft_delete_contacts.sql  # deleted_at column + active-row partial index (T1-3)
+│       ├── 0003_soft_delete_contacts.sql  # deleted_at column + active-row partial index (T1-3)
+│       ├── 0004_summary_views.sql    # contacts_summary + companies_summary views (T2-2)
+│       └── 0005_contact_emails_phones.sql  # multi-value email/phone tables + backfill (T2-1)
+├── scripts/
+│   └── apply-pending-migrations.mjs  # idempotent migration runner (no drizzle-kit dependency)
 ├── trigger/                          # Trigger.dev task definitions
 └── middleware.ts                     # Clerk auth middleware
 docs/

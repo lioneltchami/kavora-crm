@@ -69,13 +69,22 @@ All tables carry `orgId` (always `"kavora"` in v1). Single-tenant is enforced by
 Tables:
 
 - **Identity** — `organizations`, `users`
-- **CRM core** — `contacts`, `companies`, `deals`, `pipelines`, `pipeline_stages`, `tags`, `contact_tags`, `notes`
+- **CRM core** — `contacts`, `companies`, `deals`, `pipelines`, `pipeline_stages`, `tags`, `contact_tags`, `notes`, `contact_emails`, `contact_phones`
 - **Twilio** — `phone_numbers`, `calls`, `sms_messages`
 - **Timeline** — `activities`, `ai_summaries`
 - **AI** — `ai_drafts`, `ai_styles`, `lead_scores`, `embeddings`
 - **Ops** — `audit_log`
 
-Money is stored as `value_cents` (integer) + `currency` (ISO 4217). Phone numbers are always E.164.
+Money is stored as `value_cents` (integer) + `currency` (ISO 4217). Phone numbers are always E.164 (CHECK constraint on `contact_phones.phone_e164` + `toE164()` at write time).
+
+### Multi-value contact channels (T2-1)
+
+`contacts.email` and `contacts.phone` remain as legacy single-value columns (denormalized for backwards compatibility with list views, AI outreach, and Twilio lookup paths). The source of truth lives in two normalized tables:
+
+- `contact_emails (id, contact_id, email, type, is_primary, created_at)` — type enum `('work' | 'home' | 'other')`. At most one row per contact may have `is_primary = true` (app-layer discipline; no DB-level partial unique constraint yet).
+- `contact_phones (id, contact_id, phone_e164, type, is_primary, created_at)` — same shape. `phone_e164` carries a CHECK constraint enforcing `^\+[1-9]\d{1,14}$`.
+
+8 new Server Actions in `src/actions/contacts.ts` (`addContactEmail`, `removeContactEmail`, `setPrimaryContactEmail`, `addContactPhone`, `removeContactPhone`, `setPrimaryContactPhone`, `setContactEmailsAndPhones`, `getContactEmailsAndPhones`). `createContact` / `updateContact` accept `emails` + `phones` JSON FormData fields and write to BOTH the new tables AND the legacy columns in a transaction. To drop the legacy columns safely, every read path that references `c.email` / `c.phone` must first be migrated to read from `contact_emails` / `contact_phones`.
 
 ### Soft-delete (contacts only)
 
@@ -93,6 +102,21 @@ Money is stored as `value_cents` (integer) + `currency` (ISO 4217). Phone number
 6. Return jsonb `{ winner_id, loser_id, reassigned_*, copied_tags }`.
 
 `SECURITY DEFINER` + `search_path = public, pg_temp` pinning. The Server Action wrapper at `src/actions/merge-contacts.ts` is the auth + audit + revalidatePath boundary.
+
+**Known gap** — `merge_contacts` currently merges scalar `contacts.email` / `phone` only. After T2-1 ships, the loser's secondary channel rows (in `contact_emails` / `contact_phones`) are lost when the loser is deleted. Follow-up ticket: UNION the loser's channel rows into the winner's before the DELETE step.
+
+### List pages with DB summary views (T2-2 + T2-3)
+
+Every list page reads from a SQL view that pre-aggregates counts in Postgres instead of N+1-ing them in Drizzle:
+
+- `contacts_summary` — `contacts` joined LEFT with `deals` / `calls` / `sms_messages` / `activities`. Embeds `nb_deals`, `nb_calls`, `nb_sms`, `last_activity_at` (`GREATEST` across activity timestamps). Filters `contacts.deleted_at IS NULL` inside the view (the T1-3 soft-delete contract — callers don't repeat the filter).
+- `companies_summary` — `companies` joined LEFT with `contacts` (active only, soft-deleted excluded) + `deals`. Embeds `nb_contacts`, `nb_deals`, `nb_open_deals` (count distinct where `status='open'`).
+
+Drizzle type defs at `src/db/views.ts` use `pgView(...).existing()` so `drizzle-kit` doesn't try to emit CREATE VIEW migrations. List pages route through `listContacts()` / `listCompanies()` which read from the views; the page shell is a thin server component that delegates rendering to `<ContactList>` / `<CompanyList>` wrappers (client components that choose desktop or mobile content via `useIsMobile()`). Desktop variant renders a table or card grid; mobile variant renders a card stack. Empty states distinguish "no data" (rich CTA) from "no results" (inline clear-filters affordance).
+
+### Bottom-sheet create/edit (T2-4)
+
+Reusable `BottomSheet` wrapper in `src/components/ui/bottom-sheet.tsx` — `Sheet` with `side="bottom"`, `h-dvh flex flex-col`, `aria-describedby={undefined}` (silences Radix Dialog warning), sticky footer Save + Cancel (`flex-1 h-12`). Used by NewContactButton, NewCompanyButton, NewDealButton, and `edit-contact-sheet.tsx` (the contact edit route at `/contacts/[id]/edit`). Mobile-first by default — full-height on every viewport per atomic-crom §10.
 
 ---
 

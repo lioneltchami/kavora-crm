@@ -42,6 +42,10 @@ pnpm format             # prettier + tailwind plugin
 | Add a sidebar nav item | `src/lib/navigation.ts` (mainNavItems or settingsNavItems) — never edit `sidebar.tsx` |
 | Wire an Undo button onto a destructive action | `undoable({ message, perform, undo, type? })` from `@/lib/undoable` |
 | Merge two contacts | `mergeContact({ winnerId, loserId })` from `@/actions/merge-contacts` (calls the PL/pgSQL function `merge_contacts(...)` from `src/db/migrations/0002_merge_contacts.sql`) |
+| Add a multi-value email/phone to a contact | `addContactEmail` / `addContactPhone` from `@/actions/contacts` (writes to `contact_emails` / `contact_phones`, mirrors primary to legacy `contacts.email` / `contacts.phone`) |
+| Build a new create/edit dialog | `<BottomSheet>` from `@/components/ui/bottom-sheet` — pass `formId` + `onSubmit` |
+| Read a list view from the summary view | `listContacts` / `listCompanies` from `@/actions/contacts` / `@/actions/companies` — already read from `contacts_summary` / `companies_summary`, returns `ContactSummary[]` / `CompanySummary[]` |
+| Add a new DB migration | Write `src/db/migrations/00XX_<name>.sql`, use `CREATE OR REPLACE` or `ADD COLUMN IF NOT EXISTS` for idempotency, and **add a check entry to `scripts/apply-pending-migrations.mjs`** — GH Actions auto-applies on push to main |
 
 ---
 
@@ -56,7 +60,8 @@ pnpm format             # prettier + tailwind plugin
 - **Twilio credentials** — the SDK in `src/lib/twilio/client.ts` uses **`twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)`** with the same auth token also used for webhook signature verification. There is **no API-key pattern in this codebase** — the original "subaccount + API key" architecture was simplified during v1 build because Kavora Systems runs a single Twilio account, not master + subaccount. If you re-introduce an API key, update both `client.ts` (outbound SDK) and `storage.ts` (recording downloads) — both use HTTP Basic Auth with the credential pair.
 - **Audit** — every mutating server action ends with `logAudit(...)`.
 - **Drizzle types** — export `NewX` for inserts and `X` for selects (`InferSelect` is fine, but keep names predictable).
-- **Soft-delete contacts** — the `contacts` table has `deletedAt timestamptz NULL`. **Every read path that touches contacts MUST filter `isNull(contacts.deletedAt)`** (or use the `getContact` / `listContacts` actions, which already do). Including: list pages, detail pages, the company-detail contact list, the dashboard hot-leads + total, the analytics tile, the dial-gate routing lookup, the inbound phone `contact-lookup`, the lead-scoring query, and the outbound call/SMS `communications` actions. If you add a new contact query, add the filter.
+- **Soft-delete contacts** — the `contacts` table has `deletedAt timestamptz NULL`. **Every read path that touches contacts MUST filter `isNull(contacts.deletedAt)`** (or use the `getContact` / `getContactEmailsAndPhones` / `listContacts` actions, which already do). Including: list pages, detail pages, the company-detail contact list, the dashboard hot-leads + total, the analytics tile, the dial-gate routing lookup, the inbound phone `contact-lookup`, the lead-scoring query, and the outbound call/SMS `communications` actions. If you add a new contact query, add the filter.
+- **Multi-value contact channels** — `contacts.email` and `contacts.phone` are now legacy denormalized columns. The source of truth lives in `contact_emails` and `contact_phones` (added in T2-1). When you add or update a contact, write to BOTH the new tables (via `addContactEmail` / `setContactEmailsAndPhones`) AND the legacy columns. To read multi-value channels, use `getContactEmailsAndPhones(contactId)`.
 - **Undoable mutations** — destructive UI actions that the user might want to reverse go through `undoable({ message, perform, undo, type? })` from `@/lib/undoable`. The helper shows a Sonner toast with an "Undo" button that calls `undo()` if clicked before auto-dismiss. Do not roll your own confirm-then-toast pattern — reuse the helper so the Undo affordance is consistent.
 - **Sidebar nav** — `src/lib/navigation.ts` is the single source of truth for main + settings nav items and the `isNavItemActive()` helper. Don't add nav items inline in `src/components/dashboard/sidebar.tsx`.
 
@@ -72,9 +77,11 @@ pnpm format             # prettier + tailwind plugin
 - ❌ Don't commit `.env.local` or any `*.env-check` file (already in `.gitignore`).
 - ❌ Don't use raw `pg.Pool.query` inside the action layer — wrap in `db.execute(...)` for tracing.
 - ❌ Don't run `vercel env pull` into the workspace. The pulled file contains every production secret and would be a one-line commit away from leaking them to GitHub's secret scanner. Use `vercel env ls production --scope apotitechs-projects` for inline reads, or pull to `/tmp/`.
-- ❌ Don't add a contact query without `isNull(contacts.deletedAt)` (or going through `getContact` / `listContacts`). Soft-deleted rows must stay invisible.
+- ❌ Don't add a contact query without `isNull(contacts.deletedAt)` (or going through `getContact` / `getContactEmailsAndPhones` / `listContacts`). Soft-deleted rows must stay invisible.
 - ❌ Don't roll your own confirm-then-toast pattern for destructive actions. Use `undoable({...})` from `@/lib/undoable` so the Undo affordance is consistent.
 - ❌ Don't hardcode nav items in `src/components/dashboard/sidebar.tsx`. Update `src/lib/navigation.ts` instead.
+- ❌ Don't read `c.email` or `c.phone` directly when you could use `getContactEmailsAndPhones(contactId)` — the legacy columns are denormalized and will not have all values once contacts grow multiple channels.
+- ❌ Don't add a new migration SQL file without also adding a check entry to `scripts/apply-pending-migrations.mjs` — the runner needs to know how to detect prior state, and missing entries silently skip the migration forever.
 
 ---
 
