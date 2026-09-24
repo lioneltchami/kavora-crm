@@ -7,15 +7,11 @@ import { Button } from "@/components/ui/button";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { createDeal } from "@/actions/deals";
 import type { PipelineStage } from "@/db/schema";
+
+const selectClass =
+  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function NewDealButton({
   pipelineId,
@@ -70,18 +66,18 @@ export function NewDealButton({
           </div>
           <div className="space-y-1">
             <Label htmlFor="stageId">Stage</Label>
-            <Select name="stageId" defaultValue={firstOpenStage?.id}>
-              <SelectTrigger id="stageId">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {stages.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <select
+              id="stageId"
+              name="stageId"
+              defaultValue={firstOpenStage?.id ?? ""}
+              className={selectClass}
+            >
+              {stages.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </BottomSheet>

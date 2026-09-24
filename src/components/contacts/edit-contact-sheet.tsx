@@ -5,17 +5,13 @@ import { useRouter } from "next/navigation";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { updateContact } from "@/actions/contacts";
 import type { Contact } from "@/db/schema";
 
 type Company = { id: string; name: string };
+
+const selectClass =
+  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function EditContactSheet({
   contact,
@@ -71,7 +67,7 @@ export function EditContactSheet({
         </div>
       </div>
       <div className="space-y-1">
-        <Label htmlFor="phone">Phone (E.164 OK)</Label>
+        <Label htmlFor="phone">Phone</Label>
         <Input id="phone" name="phone" defaultValue={contact.phone ?? ""} placeholder="+13035551234" />
       </div>
       <div className="space-y-1">
@@ -81,18 +77,19 @@ export function EditContactSheet({
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label htmlFor="companyId">Company</Label>
-          <Select name="companyId" defaultValue={contact.companyId ?? undefined}>
-            <SelectTrigger id="companyId">
-              <SelectValue placeholder="None" />
-            </SelectTrigger>
-            <SelectContent>
-              {companies.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <select
+            id="companyId"
+            name="companyId"
+            defaultValue={contact.companyId ?? ""}
+            className={selectClass}
+          >
+            <option value="">None</option>
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="space-y-1">
           <Label htmlFor="source">Source</Label>
@@ -101,17 +98,17 @@ export function EditContactSheet({
       </div>
       <div className="space-y-1">
         <Label htmlFor="status">Status</Label>
-        <Select name="status" defaultValue={contact.status}>
-          <SelectTrigger id="status">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="lead">Lead</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="customer">Customer</SelectItem>
-            <SelectItem value="archived">Archived</SelectItem>
-          </SelectContent>
-        </Select>
+        <select
+          id="status"
+          name="status"
+          defaultValue={contact.status}
+          className={selectClass}
+        >
+          <option value="lead">Lead</option>
+          <option value="active">Active</option>
+          <option value="customer">Customer</option>
+          <option value="archived">Archived</option>
+        </select>
       </div>
     </BottomSheet>
   );

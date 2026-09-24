@@ -7,17 +7,13 @@ import { Button } from "@/components/ui/button";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { createContact } from "@/actions/contacts";
 import { listCompanies } from "@/actions/companies";
 
 type Company = { id: string; name: string };
+
+const selectClass =
+  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function NewContactButton() {
   const [open, setOpen] = useState(false);
@@ -77,7 +73,7 @@ export function NewContactButton() {
           </div>
         </div>
         <div className="space-y-1">
-          <Label htmlFor="phone">Phone (E.164 OK)</Label>
+          <Label htmlFor="phone">Phone</Label>
           <Input id="phone" name="phone" placeholder="+13035551234" />
         </div>
         <div className="space-y-1">
@@ -87,18 +83,19 @@ export function NewContactButton() {
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label htmlFor="companyId">Company</Label>
-            <Select name="companyId">
-              <SelectTrigger id="companyId">
-                <SelectValue placeholder="None" />
-              </SelectTrigger>
-              <SelectContent>
-                {companies.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <select
+              id="companyId"
+              name="companyId"
+              defaultValue=""
+              className={selectClass}
+            >
+              <option value="">None</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="space-y-1">
             <Label htmlFor="source">Source</Label>
@@ -107,17 +104,17 @@ export function NewContactButton() {
         </div>
         <div className="space-y-1">
           <Label htmlFor="status">Status</Label>
-          <Select name="status" defaultValue="lead">
-            <SelectTrigger id="status">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="lead">Lead</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="customer">Customer</SelectItem>
-              <SelectItem value="archived">Archived</SelectItem>
-            </SelectContent>
-          </Select>
+          <select
+            id="status"
+            name="status"
+            defaultValue="lead"
+            className={selectClass}
+          >
+            <option value="lead">Lead</option>
+            <option value="active">Active</option>
+            <option value="customer">Customer</option>
+            <option value="archived">Archived</option>
+          </select>
         </div>
       </BottomSheet>
     </>
