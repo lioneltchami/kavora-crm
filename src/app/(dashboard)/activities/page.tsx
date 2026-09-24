@@ -1,10 +1,19 @@
 import { db } from "@/db";
-import { activities, calls, smsMessages, KAVORA_ORG_ID } from "@/db/schema";
+import { activities, KAVORA_ORG_ID } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { formatDistanceToNow } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
+
+const ACTIVITY_TYPES = [
+  "call",
+  "sms",
+  "note",
+  "email",
+  "meeting",
+  "stage-change",
+] as const;
 
 export default async function ActivityPage() {
   const rows = await db
@@ -40,9 +49,11 @@ export default async function ActivityPage() {
         </ol>
       )}
       <p className="mt-3 text-xs text-muted-foreground">
-        Calls: {rows.filter((r) => r.type === "call").length} · SMS:{" "}
-        {rows.filter((r) => r.type === "sms").length} · Notes:{" "}
-        {rows.filter((r) => r.type === "note").length}
+        {ACTIVITY_TYPES.map((t) => (
+          <span key={t} className="mr-3">
+            {t}: {rows.filter((r) => r.type === t).length}
+          </span>
+        ))}
       </p>
     </div>
   );

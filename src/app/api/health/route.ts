@@ -10,6 +10,7 @@ export async function GET() {
     await db.execute(sql`SELECT 1`);
     return NextResponse.json({ ok: true });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+    console.error("[health] db probe failed", err);
+    return NextResponse.json({ ok: false }, { status: 500 });
   }
 }

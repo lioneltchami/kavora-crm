@@ -48,10 +48,10 @@ export default function IntegrationsPage() {
           <CardTitle className="text-base">AI providers</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
-          <Row label="Anthropic Claude" var="ANTHROPIC_API_KEY" />
-          <Row label="Deepgram STT" var="DEEPGRAM_API_KEY" />
-          <Row label="Voyage / OpenAI Embeddings" var="VOYAGE_API_KEY / OPENAI_API_KEY" />
-          <Row label="Trigger.dev (jobs)" var="TRIGGER_SECRET_KEY" />
+          <Row label="Anthropic Claude" envVar="ANTHROPIC_API_KEY" />
+          <Row label="Deepgram STT" envVar="DEEPGRAM_API_KEY" />
+          <Row label="Voyage / OpenAI Embeddings" envVar="VOYAGE_API_KEY / OPENAI_API_KEY" />
+          <Row label="Trigger.dev (jobs)" envVar="TRIGGER_SECRET_KEY" />
         </CardContent>
       </Card>
     </div>
@@ -67,11 +67,11 @@ function Endpoint({ path, event }: { path: string; event: string }) {
   );
 }
 
-function Row({ label, var: varName }: { label: string; var: string }) {
+function Row({ label, envVar }: { label: string; envVar: string }) {
   return (
     <div className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
       <span>{label}</span>
-      <code className="text-xs text-muted-foreground">{varName}</code>
+      <code className="text-xs text-muted-foreground">{envVar}</code>
     </div>
   );
 }

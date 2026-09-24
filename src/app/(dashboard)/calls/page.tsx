@@ -9,6 +9,17 @@ import { RecordingPlayer } from "@/components/calls/recording-player";
 
 export const dynamic = "force-dynamic";
 
+function formatDuration(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  if (m < 60) return `${m}:${rem.toString().padStart(2, "0")}`;
+  const h = Math.floor(m / 60);
+  const remM = m % 60;
+  return `${h}:${remM.toString().padStart(2, "0")}:${rem.toString().padStart(2, "0")}`;
+}
+
 export default async function CallsPage() {
   const rows = await db
     .select({
@@ -62,7 +73,9 @@ export default async function CallsPage() {
                         c.startedAt ?? c.createdAt,
                       )}
                     </span>
-                    {c.durationSeconds != null && <span>{c.durationSeconds}s</span>}
+                    {c.durationSeconds != null && (
+                      <span>{formatDuration(c.durationSeconds)}</span>
+                    )}
                   </div>
                 </div>
               </div>

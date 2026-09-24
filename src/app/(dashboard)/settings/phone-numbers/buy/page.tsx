@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatPhoneForDisplay } from "@/lib/phone";
 import { BuyNumberButton } from "@/components/settings/buy-number-button";
+import { twilioConfigured } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
@@ -13,10 +14,12 @@ export default async function BuyNumberPage({
   searchParams: Promise<{ areaCode?: string; type?: "local" | "tollfree" }>;
 }) {
   const sp = await searchParams;
-  const numbers = await listAvailableNumbers({
-    areaCode: sp.areaCode,
-    type: sp.type ?? "local",
-  });
+  const numbers = twilioConfigured
+    ? await listAvailableNumbers({
+        areaCode: sp.areaCode,
+        type: sp.type ?? "local",
+      })
+    : [];
 
   return (
     <div className="space-y-6">
@@ -24,6 +27,13 @@ export default async function BuyNumberPage({
         title="Buy a phone number"
         description="Pick a number and it will be wired to your CRM webhooks automatically."
       />
+
+      {!twilioConfigured && (
+        <div className="rounded-md border border-amber-500 bg-amber-50 p-4 text-sm dark:bg-amber-950/20">
+          Twilio is not configured. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in your
+          environment to search and buy numbers.
+        </div>
+      )}
 
       <form className="flex items-end gap-3">
         <div className="space-y-1">
@@ -48,7 +58,8 @@ export default async function BuyNumberPage({
         </div>
         <button
           type="submit"
-          className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          disabled={!twilioConfigured}
+          className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Search
         </button>
@@ -72,7 +83,7 @@ export default async function BuyNumberPage({
             </CardContent>
           </Card>
         ))}
-        {numbers.length === 0 && (
+        {numbers.length === 0 && twilioConfigured && (
           <p className="col-span-full text-sm text-muted-foreground">
             No numbers available — try a different area code.
           </p>
