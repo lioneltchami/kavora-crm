@@ -155,3 +155,43 @@ Each pattern above links back to a section in either source doc. To implement:
 4. Add tests + audit log entry per the `AGENTS.md` rules
 
 Both source docs contain `path:line` references and 3–10 line code excerpts, so most porting can happen without cloning the repo.
+
+---
+
+## Bonus: glean from `frappe/crm` and `trycompai/crm`
+
+After the atomic-crm review, two more OSS CRMs were skimmed (not full deep-dives). Each yielded 1–3 patterns worth knowing — none large enough to justify a full review, but worth recording.
+
+### Frappe CRM ([github.com/frappe/crm](https://github.com/frappe/crm)) — Python/Vue
+
+**Standout patterns:**
+- **Custom Views** — saved filter/sort/column configurations per user. Implemented in `frontend/src/components/ViewControls.vue:529-561` and persisted server-side. Lets a sales rep save "My Q4 deals > $10k in late stages" and reload it across devices. **Score: demand 4 / cost 2 / AI leverage 1 → 7** (deferrable).
+- **Domain Enrichment** — `crm/domain_enrichment/` auto-fills company data from a website URL (logo, industry, employee count). **Score: demand 3 / cost 2 / AI leverage 5 → 10** (a Claude-powered version would beat the heuristic ones they ship).
+- **Assignment Rules** — `crm/api/assignment_rule.py` auto-routes new leads to reps by criteria (region, source, deal size). Useful when Kavora gets to team features. **Score: demand 3 / cost 2 / AI leverage 2 → 7** (deferrable).
+
+**Skip:** Form Scripts (eval'd JS at runtime — security landmine), Python stack (different from ours), Frappe framework coupling.
+
+### trycomp CRM ([github.com/trycompai/crm](https://github.com/trycompai/crm)) — TypeScript/Bun/eve
+
+This one is **the most architecturally aligned with where Kavora should go long-term** — it's "agent-first, the CRM is where the agent keeps its notes."
+
+**Standout patterns:**
+- **Agent tab on every record** — `apps/app/components/crm/record-sheet/company-sheet.tsx:212` and `deal-sheet.tsx:164` mount `<AgentPanel>` as a tab. Shows the AI's work-in-progress, leads it discarded and why, and inline questions when it can't decide. **Score: demand 5 / cost 3 / AI leverage 5 → 13** (this is a tier-3 big bet — the single most differentiating AI feature across all four CRMs we reviewed).
+- **Work-queue with `FOR UPDATE SKIP LOCKED`** — `apps/agent/agent/lib/tasks.ts` → `claimDue()`. Two dispatchers take disjoint rows; lease expires if a run dies. We get this for free with Trigger.dev schedules. **Skip (already have it).**
+- **Sandbox with `deny-all` egress** — agent gets bash/grep + `/workspace` but no network and no `DATABASE_URL`. Defends against prompt injection exfiltrating customer data. **Score: demand 2 / cost 3 / AI leverage 4 → 9** (deferrable; only matters once we run user-driven AI features).
+- **Skill files in markdown, versioned like code** — `apps/agent/agent/skills/*.md` — agent reads them like prompts. Cheap, durable, git-traceable. **Score: demand 2 / cost 1 / AI leverage 3 → 6** (could land alongside T3-1).
+- **Settings → General for API keys** — store keys in a DB row the user can edit; the agent reads them per-session. Avoids redeploy-to-set-env. **Score: demand 2 / cost 2 / AI leverage 2 → 6** (deferrable).
+
+**Skip:** eve framework coupling (their runtime), `eve`'s session durability (Trigger.dev covers this for us).
+
+### Combined recommendation
+
+- **Tier 3 add: T3-4 "Agent tab on every record"** — add to `apply-to-kavora.md` Tier 3 list (W7+ work, but the highest-leverage AI surface across all four CRMs).
+- **Defer:** Custom Views, Domain Enrichment (Claude-powered version), Assignment Rules, Skill files, Settings-as-DB-row for keys — all backlog candidates for v3.
+- **Skip:** Form Scripts (Frappe), eve framework (trycomp), FOR UPDATE SKIP LOCKED work-queue (we have Trigger.dev).
+
+**The four-CRM survey is complete.** Atomic CRM gave us the bulk of the architecture patterns; trycomp gave us the AI surface; frappe gave us a few operational niceties. No more deep-dives warranted — we have enough input for v2 + a backlog for v3.
+
+### Stop here on research
+
+Three full reviews + two glances = ~6 hours of focused code-reading. Diminishing returns at this point. The next hour spent implementing T1-1 (sidebar shell) returns more v2 value than another repo skim. Recommend: stop researching, start building.
