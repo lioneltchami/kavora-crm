@@ -45,8 +45,8 @@ type RawMergeSummary = {
   reassigned_ai_drafts: number;
   reassigned_lead_scores: number;
   copied_tags: number;
-  copied_emails: number;
-  copied_phones: number;
+  copied_emails?: number;
+  copied_phones?: number;
 };
 
 /**
@@ -91,6 +91,13 @@ export async function mergeContact(input: {
     copiedEmails: raw.copied_emails ?? 0,
     copiedPhones: raw.copied_phones ?? 0,
   };
+
+  if (raw.copied_emails === undefined || raw.copied_phones === undefined) {
+    console.warn(
+      `[mergeContact] prod DB returned merge_contacts jsonb without copied_emails/copied_phones — ` +
+        `the migration runner may not have applied the SQL update yet. Audit counts will under-report until SQL catches up.`,
+    );
+  }
 
   await logAudit({
     orgId: ctx.orgId,
