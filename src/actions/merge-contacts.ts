@@ -29,6 +29,8 @@ export interface MergeContactResult {
   reassignedAiDrafts: number;
   reassignedLeadScores: number;
   copiedTags: number;
+  copiedEmails: number;
+  copiedPhones: number;
 }
 
 type RawMergeSummary = {
@@ -43,6 +45,8 @@ type RawMergeSummary = {
   reassigned_ai_drafts: number;
   reassigned_lead_scores: number;
   copied_tags: number;
+  copied_emails: number;
+  copied_phones: number;
 };
 
 /**
@@ -84,6 +88,8 @@ export async function mergeContact(input: {
     reassignedAiDrafts: raw.reassigned_ai_drafts,
     reassignedLeadScores: raw.reassigned_lead_scores,
     copiedTags: raw.copied_tags,
+    copiedEmails: raw.copied_emails,
+    copiedPhones: raw.copied_phones,
   };
 
   await logAudit({
