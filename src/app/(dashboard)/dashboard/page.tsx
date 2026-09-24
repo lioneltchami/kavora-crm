@@ -49,6 +49,7 @@ async function getStats() {
       .where(
         and(
           eq(leadScores.orgId, KAVORA_ORG_ID),
+          eq(contacts.orgId, KAVORA_ORG_ID),
           isNull(contacts.deletedAt),
         ),
       )

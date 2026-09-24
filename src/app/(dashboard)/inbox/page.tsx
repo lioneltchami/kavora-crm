@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { smsMessages, contacts, KAVORA_ORG_ID } from "@/db/schema";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -22,6 +22,7 @@ export default async function InboxPage() {
         contactId: smsMessages.contactId,
         lastBody: smsMessages.body,
         lastAt: smsMessages.createdAt,
+        lastFromNumber: smsMessages.fromNumber,
         contactFirst: contacts.firstName,
         contactLast: contacts.lastName,
         contactPhone: contacts.phone,
@@ -30,7 +31,7 @@ export default async function InboxPage() {
       })
       .from(smsMessages)
       .leftJoin(contacts, eq(contacts.id, smsMessages.contactId))
-      .where(eq(smsMessages.orgId, KAVORA_ORG_ID)),
+      .where(and(eq(smsMessages.orgId, KAVORA_ORG_ID), isNull(contacts.deletedAt))),
   );
 
   const threads = await db
@@ -39,6 +40,7 @@ export default async function InboxPage() {
       contactId: rankedThreads.contactId,
       lastBody: rankedThreads.lastBody,
       lastAt: rankedThreads.lastAt,
+      lastFromNumber: rankedThreads.lastFromNumber,
       contactFirst: rankedThreads.contactFirst,
       contactLast: rankedThreads.contactLast,
       contactPhone: rankedThreads.contactPhone,
@@ -48,6 +50,38 @@ export default async function InboxPage() {
     .where(eq(rankedThreads.rn, 1))
     .orderBy(desc(rankedThreads.lastAt))
     .limit(50);
+
+  const contactIds = threads
+    .map((t) => t.contactId)
+    .filter((id): id is string => typeof id === "string");
+  const allMessages = contactIds.length
+    ? await db
+        .select({
+          id: smsMessages.id,
+          contactId: smsMessages.contactId,
+          body: smsMessages.body,
+          direction: smsMessages.direction,
+          createdAt: smsMessages.createdAt,
+        })
+        .from(smsMessages)
+        .where(
+          and(
+            inArray(smsMessages.contactId, contactIds),
+            eq(smsMessages.orgId, KAVORA_ORG_ID),
+          ),
+        )
+        .orderBy(desc(smsMessages.createdAt))
+        .limit(50 * contactIds.length)
+    : [];
+  const messagesByContact = new Map<string, typeof allMessages>();
+  for (const m of allMessages) {
+    if (!m.contactId) continue;
+    const bucket = messagesByContact.get(m.contactId) ?? [];
+    if (bucket.length < 50) {
+      bucket.push(m);
+      messagesByContact.set(m.contactId, bucket);
+    }
+  }
 
   return (
     <div>
@@ -61,60 +95,68 @@ export default async function InboxPage() {
             No SMS yet. Once your Twilio number receives a message, it'll appear here.
           </p>
         ) : (
-          threads.map((t) => (
-            <details key={t.contactId ?? "unknown"} className="group p-3">
-              <summary className="flex cursor-pointer items-start gap-3">
-                <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-500" />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <Link
-                      href={t.contactId ? `/contacts/${t.contactId}` : "#"}
-                      className="font-medium hover:underline"
-                    >
-                      {[t.contactFirst, t.contactLast].filter(Boolean).join(" ") ||
-                        formatPhoneForDisplay(t.contactPhone)}
-                    </Link>
-                    <span className="text-xs text-muted-foreground">
-                      {new Intl.DateTimeFormat("en", { dateStyle: "short", timeStyle: "short" }).format(
-                        t.lastAt,
-                      )}
-                      {" · "}
-                      {t.total} message{t.total === 1 ? "" : "s"}
-                    </span>
+          threads.map((t) => {
+            const name =
+              [t.contactFirst, t.contactLast].filter(Boolean).join(" ") ||
+              formatPhoneForDisplay(t.contactPhone ?? t.lastFromNumber);
+            const threadMessages = t.contactId
+              ? (messagesByContact.get(t.contactId) ?? [])
+              : [];
+            return (
+              <details key={t.contactId ?? t.lastFromNumber ?? "unknown"} className="group p-3">
+                <summary className="flex cursor-pointer items-start gap-3">
+                  <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-500" />
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <Link
+                        href={t.contactId ? `/contacts/${t.contactId}` : "#"}
+                        className="font-medium hover:underline"
+                      >
+                        {name}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">
+                        {new Intl.DateTimeFormat("en", {
+                          dateStyle: "short",
+                          timeStyle: "short",
+                        }).format(t.lastAt)}
+                        {" · "}
+                        {t.total} message{t.total === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    <p className="line-clamp-1 text-sm text-muted-foreground">{t.lastBody}</p>
                   </div>
-                  <p className="line-clamp-1 text-sm text-muted-foreground">{t.lastBody}</p>
-                </div>
-              </summary>
-              {t.contactId && (
-                <div className="mt-3 space-y-3 border-t pt-3">
-                  <ThreadMessages contactId={t.contactId} />
-                  <SmsComposer contactId={t.contactId} />
-                </div>
-              )}
-            </details>
-          ))
+                </summary>
+                {t.contactId && (
+                  <div className="mt-3 space-y-3 border-t pt-3">
+                    <ThreadMessages messages={threadMessages} />
+                    <SmsComposer contactId={t.contactId} />
+                  </div>
+                )}
+              </details>
+            );
+          })
         )}
       </div>
     </div>
   );
 }
 
-async function ThreadMessages({ contactId }: { contactId: string }) {
-  const msgs = await db
-    .select({
-      id: smsMessages.id,
-      body: smsMessages.body,
-      direction: smsMessages.direction,
-      createdAt: smsMessages.createdAt,
-    })
-    .from(smsMessages)
-    .where(and(eq(smsMessages.contactId, contactId), eq(smsMessages.orgId, KAVORA_ORG_ID)))
-    .orderBy(desc(smsMessages.createdAt))
-    .limit(50);
-
+function ThreadMessages({
+  messages,
+}: {
+  messages: Array<{
+    id: string;
+    body: string;
+    direction: "inbound" | "outbound";
+    createdAt: Date;
+  }>;
+}) {
+  if (messages.length === 0) {
+    return <p className="text-xs text-muted-foreground">No messages in this thread yet.</p>;
+  }
   return (
     <div className="max-h-96 space-y-2 overflow-y-auto">
-      {msgs.map((s) => (
+      {messages.map((s) => (
         <div
           key={s.id}
           className={`flex ${s.direction === "outbound" ? "justify-end" : "justify-start"}`}

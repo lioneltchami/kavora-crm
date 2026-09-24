@@ -1,12 +1,11 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { smsMessages, calls, activities, aiSummaries } from "@/db/schema";
+import { smsMessages, calls, activities, aiSummaries, KAVORA_ORG_ID } from "@/db/schema";
 import { transcribeCall } from "@/lib/ai/transcribe";
 import { summarizeSms, summarizeCallTranscript } from "@/lib/ai/summarize";
 import { embedActivity } from "@/lib/ai/embed";
 import { env } from "@/lib/env";
-import { KAVORA_ORG_ID } from "@/db/schema";
 
 /**
  * Background job dispatcher.
@@ -58,7 +57,12 @@ export async function enqueueInboundSms({ messageSid }: { messageSid: string }):
       const row = await db
         .select()
         .from(smsMessages)
-        .where(eq(smsMessages.twilioMessageSid, messageSid))
+        .where(
+          and(
+            eq(smsMessages.twilioMessageSid, messageSid),
+            eq(smsMessages.orgId, KAVORA_ORG_ID),
+          ),
+        )
         .limit(1);
       const sms = row[0];
       if (!sms) return;

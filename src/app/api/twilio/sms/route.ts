@@ -29,10 +29,11 @@ export async function POST(req: Request) {
     return new NextResponse("Missing required Twilio params", { status: 400 });
   }
 
-  const { contactId, phoneE164 } = await findOrCreateContactByPhone(From, { autoCreate: true });
-  const phoneNumberRow = await findPhoneNumberByE164(To);
+  const [{ contactId, phoneE164 }, phoneNumberRow] = await Promise.all([
+    findOrCreateContactByPhone(From, { autoCreate: true }),
+    findPhoneNumberByE164(To),
+  ]);
 
-  // Insert the SMS row idempotently, then insert the linked activity row.
   const insertedSms = await db
     .insert(smsMessages)
     .values({
@@ -58,15 +59,22 @@ export async function POST(req: Request) {
       .limit(1);
     smsId = existing[0]?.id;
   }
-  if (smsId) {
-    await db.insert(activities).values({
-      orgId: KAVORA_ORG_ID,
-      type: "sms",
-      contactId,
-      refId: smsId,
-      summary: (Body ?? "").slice(0, 200),
-      occurredAt: new Date(),
-    });
+  if (smsId && contactId) {
+    const existingActivity = await db
+      .select({ id: activities.id })
+      .from(activities)
+      .where(and(eq(activities.refId, smsId), eq(activities.type, "sms")))
+      .limit(1);
+    if (!existingActivity[0]) {
+      await db.insert(activities).values({
+        orgId: KAVORA_ORG_ID,
+        type: "sms",
+        contactId,
+        refId: smsId,
+        summary: (Body ?? "").slice(0, 200),
+        occurredAt: new Date(),
+      });
+    }
   }
 
   await enqueueInboundSms({ messageSid: MessageSid });
