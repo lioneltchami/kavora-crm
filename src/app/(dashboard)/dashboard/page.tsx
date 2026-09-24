@@ -10,7 +10,7 @@ import {
   smsMessages,
   leadScores,
 } from "@/db/schema";
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { HotLeads } from "@/components/dashboard/hot-leads";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ async function getStats() {
     db
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(contacts)
-      .where(eq(contacts.orgId, KAVORA_ORG_ID)),
+      .where(and(eq(contacts.orgId, KAVORA_ORG_ID), isNull(contacts.deletedAt))),
     db
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(deals)
@@ -46,7 +46,12 @@ async function getStats() {
       })
       .from(leadScores)
       .innerJoin(contacts, eq(contacts.id, leadScores.contactId))
-      .where(eq(leadScores.orgId, KAVORA_ORG_ID))
+      .where(
+        and(
+          eq(leadScores.orgId, KAVORA_ORG_ID),
+          isNull(contacts.deletedAt),
+        ),
+      )
       .orderBy(desc(leadScores.score), desc(leadScores.scoredAt))
       .limit(5),
   ]);

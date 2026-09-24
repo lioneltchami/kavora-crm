@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { db } from "@/db";
 import { contacts, KAVORA_ORG_ID } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, isNull } from "drizzle-orm";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Badge } from "@/components/ui/badge";
 import { formatPhoneForDisplay } from "@/lib/phone";
@@ -13,7 +13,7 @@ export default async function ContactsPage() {
   const rows = await db
     .select()
     .from(contacts)
-    .where(eq(contacts.orgId, KAVORA_ORG_ID))
+    .where(and(eq(contacts.orgId, KAVORA_ORG_ID), isNull(contacts.deletedAt)))
     .orderBy(desc(contacts.updatedAt))
     .limit(200);
 

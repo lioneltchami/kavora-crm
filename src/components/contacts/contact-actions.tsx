@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { startOutboundCall } from "@/actions/communications";
-import { deleteContact } from "@/actions/contacts";
+import { softDeleteContact, restoreContact } from "@/actions/contacts";
+import { undoable } from "@/lib/undoable";
 import { toast } from "sonner";
 
 export function ContactActions({ contactId, phone }: { contactId: string; phone: string | null }) {
@@ -23,11 +24,13 @@ export function ContactActions({ contactId, phone }: { contactId: string; phone:
   }
 
   async function onDelete() {
-    if (!confirm("Delete this contact? This cannot be undone.")) return;
     try {
-      await deleteContact(contactId);
-      toast.success("Contact deleted");
-      router.push("/contacts");
+      await undoable({
+        message: "Contact deleted",
+        perform: () => softDeleteContact(contactId),
+        undo: () => restoreContact(contactId),
+        type: "success",
+      });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not delete contact");
     }

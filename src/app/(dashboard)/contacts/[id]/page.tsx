@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import {
   contacts,
@@ -39,7 +39,13 @@ export default async function ContactDetailPage({
   const contactRows = await db
     .select()
     .from(contacts)
-    .where(and(eq(contacts.id, id), eq(contacts.orgId, KAVORA_ORG_ID)))
+    .where(
+      and(
+        eq(contacts.id, id),
+        eq(contacts.orgId, KAVORA_ORG_ID),
+        isNull(contacts.deletedAt),
+      ),
+    )
     .limit(1);
   const contact = contactRows[0];
   if (!contact) notFound();

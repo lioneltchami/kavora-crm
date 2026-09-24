@@ -5,7 +5,7 @@ import { anthropicConfigured, env } from "@/lib/env";
 import { redactPII } from "@/lib/pii";
 import { db } from "@/db";
 import { contacts, leadScores, activities, aiSummaries, KAVORA_ORG_ID } from "@/db/schema";
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 
 /**
  * Score a contact's likelihood to close (0-100) using recent activity
@@ -33,7 +33,13 @@ export async function scoreContact(contactId: string): Promise<ScoreResult | nul
   const c = await db
     .select()
     .from(contacts)
-    .where(and(eq(contacts.id, contactId), eq(contacts.orgId, KAVORA_ORG_ID)))
+    .where(
+      and(
+        eq(contacts.id, contactId),
+        eq(contacts.orgId, KAVORA_ORG_ID),
+        isNull(contacts.deletedAt),
+      ),
+    )
     .limit(1);
   if (!c[0]) return null;
   const contact = c[0];

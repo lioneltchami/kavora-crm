@@ -171,6 +171,8 @@ export const contacts = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    /** Soft-delete tombstone; NULL = active. Set by `softDeleteContact`. */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [
     index("contacts_org_idx").on(t.orgId),

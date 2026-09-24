@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { calls, contacts, KAVORA_ORG_ID } from "@/db/schema";
 import { buildWebhookUrl } from "@/lib/twilio/client";
@@ -69,7 +69,7 @@ async function resolveCustomerFromRecentCall(callSid: string): Promise<string | 
   const c = await db
     .select({ phone: contacts.phone })
     .from(contacts)
-    .where(eq(contacts.id, contactId))
+    .where(and(eq(contacts.id, contactId), isNull(contacts.deletedAt)))
     .limit(1);
   const raw = c[0]?.phone;
   return raw ? toE164(raw) : null;

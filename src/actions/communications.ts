@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -31,7 +31,13 @@ export async function sendSmsToContact(opts: { contactId: string; body: string }
   const contactRows = await db
     .select()
     .from(contacts)
-    .where(and(eq(contacts.id, parsed.contactId), eq(contacts.orgId, ctx.orgId)))
+    .where(
+      and(
+        eq(contacts.id, parsed.contactId),
+        eq(contacts.orgId, ctx.orgId),
+        isNull(contacts.deletedAt),
+      ),
+    )
     .limit(1);
   const contact = contactRows[0];
   if (!contact?.phone) throw new Error("Contact has no phone number");
@@ -90,7 +96,13 @@ export async function startOutboundCall(opts: { contactId: string }) {
   const contactRows = await db
     .select()
     .from(contacts)
-    .where(and(eq(contacts.id, parsed.contactId), eq(contacts.orgId, ctx.orgId)))
+    .where(
+      and(
+        eq(contacts.id, parsed.contactId),
+        eq(contacts.orgId, ctx.orgId),
+        isNull(contacts.deletedAt),
+      ),
+    )
     .limit(1);
   const contact = contactRows[0];
   if (!contact?.phone) throw new Error("Contact has no phone number");

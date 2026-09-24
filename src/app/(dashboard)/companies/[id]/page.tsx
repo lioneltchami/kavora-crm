@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { db } from "@/db";
 import { companies, contacts, KAVORA_ORG_ID } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -25,7 +25,13 @@ export default async function CompanyDetailPage({
   const companyContacts = await db
     .select()
     .from(contacts)
-    .where(and(eq(contacts.companyId, id), eq(contacts.orgId, KAVORA_ORG_ID)));
+    .where(
+      and(
+        eq(contacts.companyId, id),
+        eq(contacts.orgId, KAVORA_ORG_ID),
+        isNull(contacts.deletedAt),
+      ),
+    );
 
   return (
     <div className="space-y-6">

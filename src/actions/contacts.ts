@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq, and, ilike, or, desc } from "drizzle-orm";
+import { eq, and, ilike, or, desc, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { contacts, type Contact } from "@/db/schema";
@@ -28,7 +28,7 @@ export async function listContacts(opts: {
   const { ctx } = await requireDbUser();
   const limit = opts.limit ?? 100;
 
-  const whereParts = [eq(contacts.orgId, ctx.orgId)];
+  const whereParts = [eq(contacts.orgId, ctx.orgId), isNull(contacts.deletedAt)];
   if (opts.status) whereParts.push(eq(contacts.status, opts.status));
   if (opts.q && opts.q.trim().length > 0) {
     const q = `%${opts.q.trim()}%`;
@@ -55,7 +55,13 @@ export async function getContact(id: string): Promise<Contact | null> {
   const rows = await db
     .select()
     .from(contacts)
-    .where(and(eq(contacts.id, id), eq(contacts.orgId, ctx.orgId)))
+    .where(
+      and(
+        eq(contacts.id, id),
+        eq(contacts.orgId, ctx.orgId),
+        isNull(contacts.deletedAt),
+      ),
+    )
     .limit(1);
   return rows[0] ?? null;
 }
@@ -156,4 +162,51 @@ export async function deleteContact(id: string) {
   });
   revalidatePath("/contacts");
   redirect("/contacts");
+}
+
+/**
+ * Soft-delete a contact by stamping `deleted_at`. Reversible for the duration
+ * of the undo window via `restoreContact`. Does NOT redirect — the caller (the
+ * `undoable` toast) decides whether to navigate.
+ */
+export async function softDeleteContact(id: string) {
+  const { ctx } = await requireDbUser();
+  const affected = await db
+    .update(contacts)
+    .set({ deletedAt: new Date() })
+    .where(and(eq(contacts.id, id), eq(contacts.orgId, ctx.orgId)))
+    .returning({ id: contacts.id });
+  if (affected.length === 0) return;
+  await logAudit({
+    orgId: ctx.orgId,
+    actorUserId: ctx.userId,
+    action: "contact.soft_deleted",
+    entity: "contact",
+    entityId: id,
+  });
+  revalidatePath("/contacts");
+  revalidatePath(`/contacts/${id}`);
+}
+
+/**
+ * Reverse of `softDeleteContact`. Clears `deleted_at` so the row reappears in
+ * the list / detail views that filter on `deleted_at IS NULL`.
+ */
+export async function restoreContact(id: string) {
+  const { ctx } = await requireDbUser();
+  const affected = await db
+    .update(contacts)
+    .set({ deletedAt: null })
+    .where(and(eq(contacts.id, id), eq(contacts.orgId, ctx.orgId)))
+    .returning({ id: contacts.id });
+  if (affected.length === 0) return;
+  await logAudit({
+    orgId: ctx.orgId,
+    actorUserId: ctx.userId,
+    action: "contact.restored",
+    entity: "contact",
+    entityId: id,
+  });
+  revalidatePath("/contacts");
+  revalidatePath(`/contacts/${id}`);
 }

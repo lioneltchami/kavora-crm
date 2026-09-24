@@ -1,0 +1,135 @@
+-- Kavora CRM — merge_contacts function
+-- Canonical dedupe: pick winner, reassign all FK references from loser to winner,
+-- merge single-value email/phone/profile_notes (winner wins, loser fills NULLs),
+-- copy contact_tags links, delete loser, return jsonb summary.
+
+-- ─── merge_contacts ────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION merge_contacts(
+  winner_id uuid,
+  loser_id uuid,
+  p_org_id varchar
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_assigned_notes       int := 0;
+  v_assigned_deals       int := 0;
+  v_assigned_calls       int := 0;
+  v_assigned_sms         int := 0;
+  v_assigned_activities  int := 0;
+  v_assigned_ai_drafts   int := 0;
+  v_assigned_lead_scores int := 0;
+  v_copied_tags          int := 0;
+BEGIN
+  -- Pin search_path so SECURITY DEFINER can't be hijacked by caller-side objects.
+  SET LOCAL search_path = public, pg_temp;
+
+  -- ─── Guard rails ────────────────────────────────────────────────────────────
+
+  IF winner_id = loser_id THEN
+    RAISE EXCEPTION 'merge_contacts: winner_id and loser_id must differ (%)', winner_id;
+  END IF;
+
+  IF winner_id IS NULL OR loser_id IS NULL THEN
+    RAISE EXCEPTION 'merge_contacts: winner_id and loser_id are required';
+  END IF;
+
+  PERFORM 1 FROM "contacts" WHERE "id" = winner_id AND "org_id" = p_org_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'merge_contacts: winner % not found in org %', winner_id, p_org_id;
+  END IF;
+
+  PERFORM 1 FROM "contacts" WHERE "id" = loser_id AND "org_id" = p_org_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'merge_contacts: loser % not found in org %', loser_id, p_org_id;
+  END IF;
+
+  -- ─── Reassign FK references from loser → winner ────────────────────────────
+
+  UPDATE "notes"
+     SET "contact_id" = winner_id
+   WHERE "contact_id" = loser_id;
+  GET DIAGNOSTICS v_assigned_notes = ROW_COUNT;
+
+  UPDATE "deals"
+     SET "contact_id" = winner_id
+   WHERE "contact_id" = loser_id;
+  GET DIAGNOSTICS v_assigned_deals = ROW_COUNT;
+
+  UPDATE "calls"
+     SET "contact_id" = winner_id
+   WHERE "contact_id" = loser_id;
+  GET DIAGNOSTICS v_assigned_calls = ROW_COUNT;
+
+  UPDATE "sms_messages"
+     SET "contact_id" = winner_id
+   WHERE "contact_id" = loser_id;
+  GET DIAGNOSTICS v_assigned_sms = ROW_COUNT;
+
+  UPDATE "activities"
+     SET "contact_id" = winner_id
+   WHERE "contact_id" = loser_id;
+  GET DIAGNOSTICS v_assigned_activities = ROW_COUNT;
+
+  UPDATE "ai_drafts"
+     SET "contact_id" = winner_id
+   WHERE "contact_id" = loser_id;
+  GET DIAGNOSTICS v_assigned_ai_drafts = ROW_COUNT;
+
+  UPDATE "lead_scores"
+     SET "contact_id" = winner_id
+   WHERE "contact_id" = loser_id;
+  GET DIAGNOSTICS v_assigned_lead_scores = ROW_COUNT;
+
+  -- ─── Merge scalar fields on the winner (winner wins, loser fills NULLs) ────
+
+  UPDATE "contacts" w
+     SET "email"         = COALESCE(w."email",         l."email"),
+         "phone"         = COALESCE(w."phone",         l."phone"),
+         "last_name"     = COALESCE(w."last_name",     l."last_name"),
+         "source"        = COALESCE(w."source",        l."source"),
+         "profile_notes" = COALESCE(w."profile_notes", l."profile_notes"),
+         "company_id"    = COALESCE(w."company_id",    l."company_id"),
+         "owner_user_id" = COALESCE(w."owner_user_id", l."owner_user_id"),
+         "updated_at"    = now()
+    FROM "contacts" l
+   WHERE w."id" = winner_id
+     AND l."id" = loser_id;
+
+  -- ─── Copy contact_tags links (dedupe via PK) ────────────────────────────────
+
+  INSERT INTO "contact_tags" ("contact_id", "tag_id")
+  SELECT winner_id, ct."tag_id"
+    FROM "contact_tags" ct
+   WHERE ct."contact_id" = loser_id
+   ON CONFLICT ("contact_id", "tag_id") DO NOTHING;
+  GET DIAGNOSTICS v_copied_tags = ROW_COUNT;
+
+  -- ─── Delete the loser ──────────────────────────────────────────────────────
+
+  DELETE FROM "contacts" WHERE "id" = loser_id;
+
+  -- ─── Summary ────────────────────────────────────────────────────────────────
+
+  RETURN jsonb_build_object(
+    'winner_id',             winner_id,
+    'loser_id',              loser_id,
+    'org_id',                p_org_id,
+    'reassigned_notes',      v_assigned_notes,
+    'reassigned_deals',      v_assigned_deals,
+    'reassigned_calls',      v_assigned_calls,
+    'reassigned_sms',        v_assigned_sms,
+    'reassigned_activities', v_assigned_activities,
+    'reassigned_ai_drafts',  v_assigned_ai_drafts,
+    'reassigned_lead_scores', v_assigned_lead_scores,
+    'copied_tags',           v_copied_tags
+  );
+END;
+$$;
+
+-- Lock down EXECUTE to authenticated callers; the app layer's RLS-equivalent
+-- (org_id check in 0001_init.sql's app code) handles tenant isolation.
+REVOKE ALL ON FUNCTION merge_contacts(uuid, uuid, varchar) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION merge_contacts(uuid, uuid, varchar) TO authenticated;

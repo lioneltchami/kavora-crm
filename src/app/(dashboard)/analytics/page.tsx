@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { calls, smsMessages, deals, contacts, KAVORA_ORG_ID } from "@/db/schema";
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, sql } from "drizzle-orm";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -35,7 +35,7 @@ export default async function AnalyticsPage() {
     db
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(contacts)
-      .where(eq(contacts.orgId, KAVORA_ORG_ID)),
+      .where(and(eq(contacts.orgId, KAVORA_ORG_ID), isNull(contacts.deletedAt))),
   ]);
 
   const stats = {

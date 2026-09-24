@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, isNotNull, desc } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, desc } from "drizzle-orm";
 import { db } from "@/db";
 import { contacts, phoneNumbers, users, KAVORA_ORG_ID } from "@/db/schema";
 import { toE164 } from "@/lib/phone";
@@ -20,7 +20,13 @@ export async function findOrCreateContactByPhone(
   const found = await db
     .select()
     .from(contacts)
-    .where(and(eq(contacts.orgId, KAVORA_ORG_ID), eq(contacts.phone, e164)))
+    .where(
+      and(
+        eq(contacts.orgId, KAVORA_ORG_ID),
+        eq(contacts.phone, e164),
+        isNull(contacts.deletedAt),
+      ),
+    )
     .orderBy(desc(contacts.createdAt))
     .limit(1);
 
@@ -56,7 +62,13 @@ export async function findOrCreateContactByPhone(
     const existing = await db
       .select()
       .from(contacts)
-      .where(and(eq(contacts.orgId, KAVORA_ORG_ID), eq(contacts.phone, e164)))
+      .where(
+        and(
+          eq(contacts.orgId, KAVORA_ORG_ID),
+          eq(contacts.phone, e164),
+          isNull(contacts.deletedAt),
+        ),
+      )
       .limit(1);
     created = existing[0];
   }
