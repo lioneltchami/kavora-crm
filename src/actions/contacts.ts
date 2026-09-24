@@ -176,9 +176,14 @@ export async function createContact(formData: FormData) {
     const row = inserted[0];
     if (!row) throw new Error("Failed to create contact");
 
-    if (emails.length > 0) {
+    const emailsToInsert = emails.length > 0
+      ? emails
+      : primaryEmail
+        ? [{ email: primaryEmail, type: "work" as const, isPrimary: true }]
+        : [];
+    if (emailsToInsert.length > 0) {
       await tx.insert(contactEmails).values(
-        emails.map((e) => ({
+        emailsToInsert.map((e) => ({
           contactId: row.id,
           email: e.email,
           type: e.type,
@@ -186,9 +191,14 @@ export async function createContact(formData: FormData) {
         })),
       );
     }
-    if (phones.length > 0) {
+    const phonesToInsert = phones.length > 0
+      ? phones
+      : primaryPhone
+        ? [{ phone: primaryPhone, type: "work" as const, isPrimary: true }]
+        : [];
+    if (phonesToInsert.length > 0) {
       await tx.insert(contactPhones).values(
-        phones.map((p) => ({
+        phonesToInsert.map((p) => ({
           contactId: row.id,
           phoneE164: p.phone,
           type: p.type,
