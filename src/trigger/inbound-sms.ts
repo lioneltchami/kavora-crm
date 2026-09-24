@@ -10,7 +10,15 @@
 import { task, schedules } from "@trigger.dev/sdk";
 import { and, eq, gte } from "drizzle-orm";
 import { db } from "@/db";
-import { smsMessages, calls, contacts, activities, leadScores, KAVORA_ORG_ID } from "@/db/schema";
+import {
+  smsMessages,
+  calls,
+  contacts,
+  activities,
+  aiSummaries,
+  leadScores,
+  KAVORA_ORG_ID,
+} from "@/db/schema";
 import { transcribeCall } from "@/lib/ai/transcribe";
 import { summarizeSms, summarizeCallTranscript } from "@/lib/ai/summarize";
 import { embedActivity } from "@/lib/ai/embed";
@@ -34,10 +42,50 @@ export const handleInboundSms = task({
     });
     if (!summary) return { skipped: "ai_not_configured" };
 
+    // Mirror the `transcribe-call` pattern: link the summary to a contact-scoped
+    // `activities` row so the contact's timeline shows an AI summary tile,
+    // and persist the structured summary into `ai_summaries` for analytics.
+    // Skip the activities/ai_summaries path when the SMS has no contact yet
+    // (the inbound webhook should always auto-create one, but the schema
+    // allows nullable contactId for race conditions).
+    if (sms.contactId) {
+      const existingActivity = await db
+        .select({ id: activities.id })
+        .from(activities)
+        .where(and(eq(activities.contactId, sms.contactId), eq(activities.refId, sms.id)))
+        .limit(1);
+      let activityId = existingActivity[0]?.id;
+      if (!activityId) {
+        const inserted = await db
+          .insert(activities)
+          .values({
+            orgId: sms.orgId,
+            type: "sms",
+            contactId: sms.contactId,
+            refId: sms.id,
+            summary: summary.summary,
+            occurredAt: sms.createdAt,
+          })
+          .returning();
+        activityId = inserted[0]?.id;
+      }
+      if (activityId) {
+        await db.insert(aiSummaries).values({
+          orgId: sms.orgId,
+          activityId,
+          summary: summary.summary,
+          nextActions: summary.nextActions,
+          sentiment: summary.sentiment,
+          topics: summary.topics,
+          model: "claude-haiku-4-5",
+        });
+      }
+    }
+
     await embedActivity({
       sourceType: "sms",
       sourceId: sms.id,
-      content: `${sms.body}\n\nSummary: ${summary.summary}`,
+      content: `${sms.body}\n\nSummary: ${summary.summary}\nNext actions: ${summary.nextActions.join("; ")}`,
       orgId: sms.orgId,
     });
 
