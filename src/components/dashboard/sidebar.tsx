@@ -53,9 +53,25 @@ function NavRow({
   );
 }
 
+function SidebarCollapseToggle() {
+  const { state, toggleSidebar } = useSidebar();
+  if (state !== "expanded") return null;
+  return (
+    <button
+      type="button"
+      onClick={toggleSidebar}
+      aria-label="Collapse sidebar"
+      aria-expanded="true"
+      title="Collapse sidebar (⌘B)"
+      className="absolute top-3 right-3 inline-flex h-7 w-7 items-center justify-center rounded-full text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring transition-colors"
+    >
+      <ChevronLeft className="h-4 w-4" />
+    </button>
+  );
+}
+
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { state, toggleSidebar } = useSidebar();
 
   return (
     <SidebarProvider>
@@ -75,18 +91,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         >
           <div className="relative">
             <SidebarBrand />
-            {state === "expanded" && (
-              <button
-                type="button"
-                onClick={toggleSidebar}
-                aria-label="Collapse sidebar"
-                aria-expanded="true"
-                title="Collapse sidebar (⌘B)"
-                className="absolute top-3 right-3 inline-flex h-7 w-7 items-center justify-center rounded-full text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring transition-colors"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-            )}
+            <SidebarCollapseToggle />
           </div>
           <SidebarContent>
             <SidebarGroup>
