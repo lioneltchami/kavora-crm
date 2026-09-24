@@ -27,6 +27,11 @@ const checks = [
     file: "src/db/migrations/0004_summary_views.sql",
     existsQuery: "SELECT EXISTS (SELECT 1 FROM information_schema.views WHERE table_schema='public' AND table_name='contacts_summary') AS e",
   },
+  {
+    name: "0005_contact_emails_phones",
+    file: "src/db/migrations/0005_contact_emails_phones.sql",
+    existsQuery: "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'contact_emails') AS e",
+  },
 ];
 
 for (const { name, file, existsQuery } of checks) {

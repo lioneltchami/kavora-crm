@@ -71,6 +71,11 @@ export const phoneNumberStatus = pgEnum("phone_number_status", [
   "active",
   "released",
 ]);
+export const contactChannelType = pgEnum("contact_channel_type", [
+  "work",
+  "home",
+  "other",
+]);
 
 // ─── Organizations (single-row for v1) ────────────────────────────────────────
 
@@ -743,6 +748,66 @@ export type AiStyle = typeof aiStyles.$inferSelect;
 export type LeadScore = typeof leadScores.$inferSelect;
 export type Embedding = typeof embeddings.$inferSelect;
 export type AuditLogEntry = typeof auditLog.$inferSelect;
+
+// ─── Contact channels (multi-value, normalized — T2-1) ────────────────────────
+// Replaces the legacy single-value `contacts.email` / `contacts.phone` columns
+// (kept in place for backward compatibility). See T2-1 in docs/research/atomic-crm.
+
+export const contactEmails = pgTable(
+  "contact_emails",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    contactId: uuid("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    type: contactChannelType("type").notNull().default("work"),
+    isPrimary: boolean("is_primary").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("contact_emails_contact_idx").on(t.contactId)],
+);
+
+export const contactPhones = pgTable(
+  "contact_phones",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    contactId: uuid("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    phoneE164: varchar("phone_e164", { length: 32 }).notNull(),
+    type: contactChannelType("type").notNull().default("work"),
+    isPrimary: boolean("is_primary").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("contact_phones_contact_idx").on(t.contactId),
+    index("contact_phones_e164_idx").on(t.phoneE164),
+  ],
+);
+
+export const contactEmailsRelations = relations(contactEmails, ({ one }) => ({
+  contact: one(contacts, {
+    fields: [contactEmails.contactId],
+    references: [contacts.id],
+  }),
+}));
+
+export const contactPhonesRelations = relations(contactPhones, ({ one }) => ({
+  contact: one(contacts, {
+    fields: [contactPhones.contactId],
+    references: [contacts.id],
+  }),
+}));
+
+export type ContactEmail = typeof contactEmails.$inferSelect;
+export type NewContactEmail = typeof contactEmails.$inferInsert;
+export type ContactPhone = typeof contactPhones.$inferSelect;
+export type NewContactPhone = typeof contactPhones.$inferInsert;
 
 /** Used as the single source-of-truth `org_id` everywhere. */
 export const KAVORA_ORG_ID = "kavora";
