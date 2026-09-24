@@ -119,7 +119,9 @@ pnpm format             # prettier + tailwind plugin
 ## Deployment
 
 - Vercel auto-deploys from `main`.
-- DB migrations: manual promote from staging branch to prod after CI passes.
+- **DB migrations** — applied automatically by `.github/workflows/migrate.yml` on push to `main` whenever `src/db/migrations/**` changes. The workflow runs `node scripts/apply-pending-migrations.mjs`, which is idempotent: each migration checks for its own signature in the DB (function / column / view existence) before applying. Requires `DIRECT_URL` to be set in repo secrets (Settings → Secrets and variables → Actions).
+- Migrations are **hand-written SQL** (not `drizzle-kit generate`) because the migration files include features the Drizzle TS schema can't express (PL/pgSQL functions, views, partial indexes). The script reads each `.sql` file in order and applies it conditionally — no `meta/_journal.json` is used.
+- **Writing a new migration**: add `src/db/migrations/00XX_<name>.sql`, prefer `CREATE OR REPLACE ...` or `ALTER ... ADD COLUMN IF NOT EXISTS` for idempotency, and update the script's checks array in `scripts/apply-pending-migrations.mjs` so it knows how to detect the prior state. Keep the file under 200 lines; if it grows, split into multiple migrations.
 - Trigger.dev: `npx trigger.dev deploy` from the project root. **Use a `tr_prod_*` key**, not `tr_dev_*` — the schedule (`scoreAllLeadsSchedule`) and any production jobs will fail with 401 from Trigger.dev's API otherwise. The inline fallback in `src/lib/queue/enqueue.ts` keeps inbound SMS working even when Trigger.dev is down, but the weekly cron will silently no-op.
 - Sentry: source maps auto-uploaded via `@sentry/nextjs` (when configured).
 
