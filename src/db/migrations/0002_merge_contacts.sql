@@ -22,6 +22,8 @@ DECLARE
   v_assigned_ai_drafts   int := 0;
   v_assigned_lead_scores int := 0;
   v_copied_tags          int := 0;
+  v_copied_emails        int := 0;
+  v_copied_phones        int := 0;
 BEGIN
   -- Pin search_path so SECURITY DEFINER can't be hijacked by caller-side objects.
   SET LOCAL search_path = public, pg_temp;
@@ -107,6 +109,55 @@ BEGIN
    ON CONFLICT ("contact_id", "tag_id") DO NOTHING;
   GET DIAGNOSTICS v_copied_tags = ROW_COUNT;
 
+  -- ─── Channel reconciliation ─────────────────────────────────────────────────
+
+  INSERT INTO "contact_emails" ("contact_id", "email", "type", "is_primary", "created_at")
+  SELECT winner_id, le."email", le."type", le."is_primary", le."created_at"
+    FROM "contact_emails" le
+   WHERE le."contact_id" = loser_id
+     AND NOT EXISTS (
+       SELECT 1 FROM "contact_emails" we
+        WHERE we."contact_id" = winner_id
+          AND lower(we."email") = lower(le."email")
+     );
+  GET DIAGNOSTICS v_copied_emails = ROW_COUNT;
+
+  UPDATE "contact_emails"
+     SET "is_primary" = false
+   WHERE "contact_id" = winner_id
+     AND "is_primary" = true
+     AND "id" NOT IN (
+       SELECT "id" FROM "contact_emails"
+        WHERE "contact_id" = winner_id
+        ORDER BY "is_primary" DESC, "created_at" DESC
+        LIMIT 1
+     );
+
+  INSERT INTO "contact_phones" ("contact_id", "phone_e164", "type", "is_primary", "created_at")
+  SELECT winner_id, lp."phone_e164", lp."type", lp."is_primary", lp."created_at"
+    FROM "contact_phones" lp
+   WHERE lp."contact_id" = loser_id
+     AND NOT EXISTS (
+       SELECT 1 FROM "contact_phones" wp
+        WHERE wp."contact_id" = winner_id
+          AND wp."phone_e164" = lp."phone_e164"
+     );
+  GET DIAGNOSTICS v_copied_phones = ROW_COUNT;
+
+  UPDATE "contact_phones"
+     SET "is_primary" = false
+   WHERE "contact_id" = winner_id
+     AND "is_primary" = true
+     AND "id" NOT IN (
+       SELECT "id" FROM "contact_phones"
+        WHERE "contact_id" = winner_id
+        ORDER BY "is_primary" DESC, "created_at" DESC
+        LIMIT 1
+     );
+
+  DELETE FROM "contact_emails" WHERE "contact_id" = loser_id;
+  DELETE FROM "contact_phones" WHERE "contact_id" = loser_id;
+
   -- ─── Delete the loser ──────────────────────────────────────────────────────
 
   DELETE FROM "contacts" WHERE "id" = loser_id;
@@ -124,6 +175,8 @@ BEGIN
     'reassigned_activities', v_assigned_activities,
     'reassigned_ai_drafts',  v_assigned_ai_drafts,
     'reassigned_lead_scores', v_assigned_lead_scores,
+    'copied_emails',         v_copied_emails,
+    'copied_phones',         v_copied_phones,
     'copied_tags',           v_copied_tags
   );
 END;

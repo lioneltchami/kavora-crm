@@ -15,7 +15,7 @@ const checks = [
   {
     name: "0002_merge_contacts",
     file: "src/db/migrations/0002_merge_contacts.sql",
-    existsQuery: "SELECT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'merge_contacts') AS e",
+    existsQuery: "SELECT EXISTS (SELECT 1 FROM pg_proc p WHERE p.proname = 'merge_contacts' AND position('copied_emails' in p.prosrc) > 0) AS e",
   },
   {
     name: "0003_soft_delete_contacts",
