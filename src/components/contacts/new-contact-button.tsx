@@ -45,8 +45,6 @@ export function NewContactButton() {
   const [phones, setPhones] = useState<PhoneRow[]>([
     { phone: "", type: "work", isPrimary: true },
   ]);
-  const [emailErrors, setEmailErrors] = useState<Record<number, string>>({});
-  const [phoneErrors, setPhoneErrors] = useState<Record<number, string>>({});
   const router = useRouter();
 
   useEffect(() => {
@@ -62,41 +60,31 @@ export function NewContactButton() {
     };
   }, [open]);
 
-  const formInvalid = useMemo(() => {
-    const emailBad = emails.some(
-      (r) => r.email.trim().length > 0 && !isValidEmail(r.email),
-    );
-    const phoneBad = phones.some(
-      (r) => r.phone.trim().length > 0 && !toE164(r.phone),
-    );
-    return emailBad || phoneBad;
-  }, [emails, phones]);
-
-  function validate(): boolean {
+  const emailErrors = useMemo(() => {
     const ee: Record<number, string> = {};
-    const pe: Record<number, string> = {};
-    let ok = true;
     emails.forEach((r, i) => {
-      const v = r.email.trim();
-      if (v.length > 0 && !isValidEmail(r.email)) {
+      if (r.email.trim().length > 0 && !isValidEmail(r.email)) {
         ee[i] = "Invalid email format";
-        ok = false;
       }
     });
+    return ee;
+  }, [emails]);
+
+  const phoneErrors = useMemo(() => {
+    const pe: Record<number, string> = {};
     phones.forEach((r, i) => {
-      const v = r.phone.trim();
-      if (v.length > 0 && !toE164(r.phone)) {
+      if (r.phone.trim().length > 0 && !toE164(r.phone)) {
         pe[i] = "Invalid phone number";
-        ok = false;
       }
     });
-    setEmailErrors(ee);
-    setPhoneErrors(pe);
-    return ok;
-  }
+    return pe;
+  }, [phones]);
+
+  const formInvalid =
+    Object.keys(emailErrors).length > 0 || Object.keys(phoneErrors).length > 0;
 
   async function onSubmit() {
-    if (!validate()) return;
+    if (formInvalid) return;
     const form = document.getElementById("new-contact-form") as HTMLFormElement | null;
     if (!form) return;
     const fd = new FormData(form);
