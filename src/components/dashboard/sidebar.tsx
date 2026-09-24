@@ -1,93 +1,119 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
-  Users,
-  Building2,
-  Briefcase,
-  Inbox,
-  Phone,
-  ListChecks,
-  BarChart3,
-  Settings,
-} from "lucide-react";
+  Sidebar as SidebarPrimitive,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+import {
+  mainNavItems,
+  settingsNavItems,
+  isNavItemActive,
+} from "@/lib/navigation";
+import { SidebarBrand } from "@/components/dashboard/sidebar-brand";
+import { SidebarUser } from "@/components/dashboard/sidebar-user";
 
-const sections = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/contacts", label: "Contacts", icon: Users },
-  { href: "/companies", label: "Companies", icon: Building2 },
-  { href: "/deals", label: "Deals", icon: Briefcase },
-  { href: "/inbox", label: "Inbox", icon: Inbox },
-  { href: "/calls", label: "Calls", icon: Phone },
-  { href: "/activities", label: "Activity", icon: ListChecks },
-  { href: "/analytics", label: "Analytics", icon: BarChart3 },
-];
+function NavRow({
+  href,
+  label,
+  icon: Icon,
+  pathname,
+}: {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  pathname: string | null;
+}) {
+  const active = isNavItemActive(href, pathname);
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild isActive={active} tooltip={label}>
+        <Link href={href}>
+          <Icon />
+          <span>{label}</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
 
-const settings = [
-  { href: "/settings/phone-numbers", label: "Phone numbers" },
-  { href: "/settings/team", label: "Team" },
-  { href: "/settings/ai", label: "AI style" },
-  { href: "/settings/integrations", label: "Integrations" },
-];
-
-export function Sidebar() {
+export function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden w-64 flex-col border-r bg-background md:flex">
-      <div className="flex h-14 items-center border-b px-4">
-        <Link href="/dashboard" className="font-bold tracking-tight">
-          Kavora CRM
-        </Link>
-      </div>
-      <nav className="flex-1 space-y-1 p-3">
-        {sections.map((s) => {
-          const Icon = s.icon;
-          const active = pathname === s.href || pathname.startsWith(`${s.href}/`);
-          return (
-            <Link
-              key={s.href}
-              href={s.href}
-              className={cn(
-                "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                active
-                  ? "bg-secondary text-secondary-foreground"
-                  : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {s.label}
-            </Link>
-          );
-        })}
-      </nav>
-      <div className="border-t p-3">
-        <div className="mb-2 flex items-center gap-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          <Settings className="h-3 w-3" /> Settings
+    <SidebarProvider>
+      <div className="flex min-h-svh w-full">
+        <div className="fixed left-2 top-2 z-40 md:hidden">
+          <SidebarTrigger aria-label="Open navigation" />
         </div>
-        <nav className="space-y-1">
-          {settings.map((s) => {
-            const active = pathname === s.href;
-            return (
-              <Link
-                key={s.href}
-                href={s.href}
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
-                  active
-                    ? "bg-secondary text-secondary-foreground"
-                    : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
-                )}
-              >
-                {s.label}
-              </Link>
-            );
-          })}
-        </nav>
+        <SidebarPrimitive
+          variant="floating"
+          collapsible="icon"
+          aria-label="Primary navigation"
+          className={cn(
+            "border-r border-sidebar-border/50",
+            "[&_[data-sidebar=menu-button][data-active=true]]:bg-secondary",
+            "[&_[data-sidebar=menu-button][data-active=true]]:text-secondary-foreground"
+          )}
+        >
+          <SidebarBrand />
+          <SidebarContent>
+            <SidebarGroup>
+              <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {mainNavItems.map((item) => (
+                    <NavRow
+                      key={item.href}
+                      href={item.href}
+                      label={item.label}
+                      icon={item.icon}
+                      pathname={pathname}
+                    />
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+            <SidebarGroup>
+              <SidebarGroupLabel>Settings</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {settingsNavItems.map((item) => (
+                    <NavRow
+                      key={item.href}
+                      href={item.href}
+                      label={item.label}
+                      icon={item.icon}
+                      pathname={pathname}
+                    />
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </SidebarContent>
+          <SidebarFooter>
+            <SidebarUser />
+          </SidebarFooter>
+          <SidebarRail />
+        </SidebarPrimitive>
+        <SidebarInset>
+          <main className="flex-1 bg-muted/30 p-6 pt-16 md:pt-6">{children}</main>
+        </SidebarInset>
       </div>
-    </aside>
+    </SidebarProvider>
   );
 }
