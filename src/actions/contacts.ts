@@ -253,6 +253,9 @@ export async function updateContact(id: string, formData: FormData) {
   if (parsed.source !== undefined) update.source = parsed.source ?? null;
   if (parsed.status !== undefined) update.status = parsed.status;
 
+  let auditNbEmails = 0;
+  let auditNbPhones = 0;
+
   await db.transaction(async (tx) => {
     await tx
       .update(contacts)
@@ -273,6 +276,8 @@ export async function updateContact(id: string, formData: FormData) {
         if (!e164) throw new Error(`Invalid phone number: ${p.phone}`);
         return { ...p, phone: e164 };
       });
+      auditNbEmails = emailsParsed.length;
+      auditNbPhones = phonesNormalized.length;
       const primaryEmail =
         emailsParsed.find((e) => e.isPrimary)?.email ??
         emailsParsed[0]?.email ??
@@ -381,12 +386,26 @@ export async function updateContact(id: string, formData: FormData) {
     }
   });
 
+  if (!hasChannelArrays) {
+    const emailRows = await db
+      .select({ id: contactEmails.id })
+      .from(contactEmails)
+      .where(eq(contactEmails.contactId, id));
+    const phoneRows = await db
+      .select({ id: contactPhones.id })
+      .from(contactPhones)
+      .where(eq(contactPhones.contactId, id));
+    auditNbEmails = emailRows.length;
+    auditNbPhones = phoneRows.length;
+  }
+
   await logAudit({
     orgId: ctx.orgId,
     actorUserId: ctx.userId,
     action: "contact.updated",
     entity: "contact",
     entityId: id,
+    meta: { nbEmails: auditNbEmails, nbPhones: auditNbPhones },
   });
 
   revalidatePath(`/contacts/${id}`);
