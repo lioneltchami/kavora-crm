@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getContactEmailsAndPhones, updateContact } from "@/actions/contacts";
+import { toE164 } from "@/lib/phone";
 import type { Contact } from "@/db/schema";
 
 type Company = { id: string; name: string };
@@ -23,6 +24,12 @@ const channelSelectClass =
   "flex h-10 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 const channelOptions: ChannelType[] = ["work", "home", "other"];
+
+const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isValidEmail(value: string): boolean {
+  return emailRe.test(value.trim());
+}
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -97,6 +104,29 @@ export function EditContactSheet({
     };
   }, [contact.id]);
 
+  const emailErrors = useMemo(() => {
+    const ee: Record<number, string> = {};
+    emails.forEach((r, i) => {
+      if (r.email.trim().length > 0 && !isValidEmail(r.email)) {
+        ee[i] = "Invalid email format";
+      }
+    });
+    return ee;
+  }, [emails]);
+
+  const phoneErrors = useMemo(() => {
+    const pe: Record<number, string> = {};
+    phones.forEach((r, i) => {
+      if (r.phone.trim().length > 0 && !toE164(r.phone)) {
+        pe[i] = "Invalid phone number";
+      }
+    });
+    return pe;
+  }, [phones]);
+
+  const formInvalid =
+    Object.keys(emailErrors).length > 0 || Object.keys(phoneErrors).length > 0;
+
   function handleOpenChange(next: boolean) {
     setOpen(next);
     if (!next) router.push(`/contacts/${contact.id}`);
@@ -149,6 +179,7 @@ export function EditContactSheet({
   }
 
   async function onSubmit() {
+    if (formInvalid) return;
     const form = document.getElementById("edit-contact-form") as HTMLFormElement | null;
     if (!form) return;
     const fd = new FormData(form);
@@ -195,6 +226,7 @@ export function EditContactSheet({
       onSubmit={onSubmit}
       submitLabel={saving ? "Saving…" : "Save changes"}
       isSubmitting={saving}
+      submitDisabled={formInvalid}
       formId="edit-contact-form"
     >
       <div className="grid grid-cols-2 gap-3">
@@ -213,54 +245,62 @@ export function EditContactSheet({
         {emails.map((row, i) => {
           const onlyRow = emails.length === 1;
           return (
-            <div key={row.id ?? `email-${i}`} className="flex flex-wrap items-center gap-2">
-              <Input
-                type="text"
-                inputMode="email"
-                placeholder="name@example.com"
-                value={row.email}
-                onChange={(e) => updateEmail(i, { email: e.target.value })}
-                className="flex-1 min-w-[180px]"
-                aria-label={`Email ${i + 1}`}
-                disabled={saving}
-              />
-              <select
-                value={row.type}
-                onChange={(e) =>
-                  updateEmail(i, { type: e.target.value as ChannelType })
-                }
-                className={channelSelectClass}
-                aria-label={`Email ${i + 1} type`}
-                disabled={saving}
-              >
-                {channelOptions.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {capitalize(opt)}
-                  </option>
-                ))}
-              </select>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={row.isPrimary || saving}
-                onClick={() => setPrimaryEmail(i)}
-                title={row.isPrimary ? "Already primary" : "Make primary"}
-                aria-pressed={row.isPrimary}
-              >
-                {row.isPrimary ? "Primary" : "Make primary"}
-              </Button>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                disabled={onlyRow || saving}
-                onClick={() => removeEmail(i)}
-                title={onlyRow ? "At least one email is required" : "Remove email"}
-                aria-label="Remove email"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+            <div key={row.id ?? `email-${i}`} className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  type="text"
+                  inputMode="email"
+                  placeholder="name@example.com"
+                  value={row.email}
+                  onChange={(e) => updateEmail(i, { email: e.target.value })}
+                  className="flex-1 min-w-[180px]"
+                  aria-label={`Email ${i + 1}`}
+                  aria-invalid={!!emailErrors[i]}
+                  disabled={saving}
+                />
+                <select
+                  value={row.type}
+                  onChange={(e) =>
+                    updateEmail(i, { type: e.target.value as ChannelType })
+                  }
+                  className={channelSelectClass}
+                  aria-label={`Email ${i + 1} type`}
+                  disabled={saving}
+                >
+                  {channelOptions.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {capitalize(opt)}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={row.isPrimary || saving}
+                  onClick={() => setPrimaryEmail(i)}
+                  title={row.isPrimary ? "Already primary" : "Make primary"}
+                  aria-pressed={row.isPrimary}
+                >
+                  {row.isPrimary ? "Primary" : "Make primary"}
+                </Button>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  disabled={onlyRow || saving}
+                  onClick={() => removeEmail(i)}
+                  title={onlyRow ? "At least one email is required" : "Remove email"}
+                  aria-label="Remove email"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+              {emailErrors[i] ? (
+                <p className="text-xs text-red-600" role="alert">
+                  {emailErrors[i]}
+                </p>
+              ) : null}
             </div>
           );
         })}
@@ -280,54 +320,62 @@ export function EditContactSheet({
         {phones.map((row, i) => {
           const onlyRow = phones.length === 1;
           return (
-            <div key={row.id ?? `phone-${i}`} className="flex flex-wrap items-center gap-2">
-              <Input
-                type="text"
-                inputMode="tel"
-                placeholder="+13035551234"
-                value={row.phone}
-                onChange={(e) => updatePhone(i, { phone: e.target.value })}
-                className="flex-1 min-w-[180px]"
-                aria-label={`Phone ${i + 1}`}
-                disabled={saving}
-              />
-              <select
-                value={row.type}
-                onChange={(e) =>
-                  updatePhone(i, { type: e.target.value as ChannelType })
-                }
-                className={channelSelectClass}
-                aria-label={`Phone ${i + 1} type`}
-                disabled={saving}
-              >
-                {channelOptions.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {capitalize(opt)}
-                  </option>
-                ))}
-              </select>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={row.isPrimary || saving}
-                onClick={() => setPrimaryPhone(i)}
-                title={row.isPrimary ? "Already primary" : "Make primary"}
-                aria-pressed={row.isPrimary}
-              >
-                {row.isPrimary ? "Primary" : "Make primary"}
-              </Button>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                disabled={onlyRow || saving}
-                onClick={() => removePhone(i)}
-                title={onlyRow ? "At least one phone is required" : "Remove phone"}
-                aria-label="Remove phone"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+            <div key={row.id ?? `phone-${i}`} className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  type="text"
+                  inputMode="tel"
+                  placeholder="+13035551234"
+                  value={row.phone}
+                  onChange={(e) => updatePhone(i, { phone: e.target.value })}
+                  className="flex-1 min-w-[180px]"
+                  aria-label={`Phone ${i + 1}`}
+                  aria-invalid={!!phoneErrors[i]}
+                  disabled={saving}
+                />
+                <select
+                  value={row.type}
+                  onChange={(e) =>
+                    updatePhone(i, { type: e.target.value as ChannelType })
+                  }
+                  className={channelSelectClass}
+                  aria-label={`Phone ${i + 1} type`}
+                  disabled={saving}
+                >
+                  {channelOptions.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {capitalize(opt)}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={row.isPrimary || saving}
+                  onClick={() => setPrimaryPhone(i)}
+                  title={row.isPrimary ? "Already primary" : "Make primary"}
+                  aria-pressed={row.isPrimary}
+                >
+                  {row.isPrimary ? "Primary" : "Make primary"}
+                </Button>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  disabled={onlyRow || saving}
+                  onClick={() => removePhone(i)}
+                  title={onlyRow ? "At least one phone is required" : "Remove phone"}
+                  aria-label="Remove phone"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+              {phoneErrors[i] ? (
+                <p className="text-xs text-red-600" role="alert">
+                  {phoneErrors[i]}
+                </p>
+              ) : null}
             </div>
           );
         })}

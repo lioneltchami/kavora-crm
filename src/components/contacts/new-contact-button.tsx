@@ -230,6 +230,7 @@ export function NewContactButton() {
                     disabled={row.isPrimary}
                     onClick={() => setEmailPrimary(i)}
                     title={row.isPrimary ? "Already primary" : "Make primary"}
+                    aria-pressed={row.isPrimary}
                   >
                     {row.isPrimary ? "Primary" : "Make primary"}
                   </Button>
@@ -299,6 +300,7 @@ export function NewContactButton() {
                     disabled={row.isPrimary}
                     onClick={() => setPhonePrimary(i)}
                     title={row.isPrimary ? "Already primary" : "Make primary"}
+                    aria-pressed={row.isPrimary}
                   >
                     {row.isPrimary ? "Primary" : "Make primary"}
                   </Button>
