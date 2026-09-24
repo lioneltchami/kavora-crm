@@ -7,14 +7,15 @@ A custom CRM for **Kavora Systems** (AI agency) with a working Twilio phone numb
 - 🧱 Single-tenant data model that can extend to multi-tenant later without a rewrite
 - 🔒 Signed Twilio webhooks, server-only env access, audit log on all mutations
 - 🎛️ shadcn/ui admin shell — floating sidebar, `Cmd/Ctrl+B` collapse, mobile Sheet drawer
-- 🔗 Contact dedupe — atomic `merge_contacts` PL/pgSQL function + Server Action
+- 🔗 Contact dedupe — atomic `merge_contacts` PL/pgSQL function + Server Action that now also reconciles `contact_emails` / `contact_phones` so the loser's channels survive the merge
 - ↩️ Soft-delete with Undo — `deleted_at` column + Sonner toast with "Undo" affordance
 - 🗄️ DB summary views — `contacts_summary` + `companies_summary` with embedded aggregates (no N+1 on list pages)
 - 📱 Mobile-first list pages — `<List>` + `<ListContent>` split with `useIsMobile()` variant switching
-- 📇 Multi-value contact channels — `contact_emails` + `contact_phones` tables with type + is_primary, E.164 CHECK
+- 📇 Multi-value contact channels — `contact_emails` + `contact_phones` tables with type + is_primary, E.164 CHECK, exposed in create/edit forms with per-row add/remove + "Make primary" toggle
 - 📜 Bottom-sheet create/edit — sticky footer Save button, full-height on every viewport
+- 🚚 Idempotent migration runner — hand-written SQL applied by `.github/workflows/migrate.yml` on push to `main` (each migration declares its own "already applied?" signature check, so re-runs are no-ops)
 
-> **Status:** v1.7 shipped — Tier 1 + first four Tier-2 items (sidebar, merge, undoable soft-delete, DB views, mobile list split, multi-value contact channels, bottom-sheet dialogs) live at `crm.kavora.systems`. All five v1 build phases complete; AI features (summaries, drafts, lead scoring) activate automatically when their keys are present and degrade gracefully to "AI not configured" otherwise. See [Known limitations](#known-limitations) below. The remaining Tier 2/3 roadmap is in [docs/research/atomic-crom/apply-to-kavora.md](./docs/research/atomic-crm/apply-to-kavora.md).
+> **Status:** v1.8 shipped — Tier 1 + first four Tier-2 items (sidebar, merge, undoable soft-delete, DB views, mobile list split, multi-value contact channels, bottom-sheet dialogs) + multi-value UI in create/edit forms + `merge_contacts` channel reconciliation live at `crm.kavora.systems`. All five v1 build phases complete; AI features (summaries, drafts, lead scoring) activate automatically when their keys are present and degrade gracefully to "AI not configured" otherwise. See [Known limitations](#known-limitations) below. The remaining Tier 2/3 roadmap is in [docs/research/atomic-crm/apply-to-kavora.md](./docs/research/atomic-crm/apply-to-kavora.md).
 
 ---
 
@@ -46,6 +47,7 @@ For a guided walkthrough of provisioning every external account (Twilio, Clerk, 
 | DB summary views — `contacts_summary` + `companies_summary` with embedded `nb_deals` / `nb_calls` / `last_activity_at` aggregates | `src/db/migrations/0004_summary_views.sql` + `src/db/views.ts` + `listContacts` / `listCompanies` |
 | Bottom-sheet create/edit dialogs — sticky footer Save, full-height on every viewport | `src/components/ui/bottom-sheet.tsx` (used by NewContactButton, NewCompanyButton, NewDealButton, edit-contact-sheet) |
 | Multi-value contact emails + phones — `contact_emails` + `contact_phones` tables with type + is_primary, E.164 CHECK | `src/db/migrations/0005_contact_emails_phones.sql` + `src/db/schema.ts` + 8 new Server Actions in `src/actions/contacts.ts` |
+| Multi-value form UI — per-row add/remove + "Make primary" toggle for emails and phones in new + edit dialogs; submit emits `emails` / `phones` JSON arrays on FormData | `src/components/contacts/new-contact-button.tsx` + `src/components/contacts/edit-contact-sheet.tsx` + `updateContact` consumes the JSON arrays at `src/actions/contacts.ts:227` |
 | Inbound voice → team cells (parallel dial) → voicemail fallback | `src/app/api/twilio/voice` + `src/lib/twilio/twiml.ts` |
 | Outbound calls with "press 1 to connect" gate | `src/actions/communications.ts` + `src/app/api/twilio/dial-gate*` |
 | Inbound SMS with auto-ack | `src/app/api/twilio/sms` |
@@ -55,7 +57,7 @@ For a guided walkthrough of provisioning every external account (Twilio, Clerk, 
 | Lead scoring cron | `src/trigger/inbound-sms.ts` → `scoreAllLeadsSchedule` (weekly Sunday 6am UTC, contacts-with-activity-in-last-30d only, concurrency 3) |
 | Drag-drop deal kanban | `src/components/deals/kanban-board.tsx` |
 | Activity timeline | `src/components/contacts/timeline.tsx` |
-| Contact dedupe — `merge_contacts(winner, loser, org)` atomic | `src/db/migrations/0002_merge_contacts.sql` + `src/actions/merge-contacts.ts` |
+| Contact dedupe — `merge_contacts(winner, loser, org)` atomic; reconciles loser's `contact_emails` / `contact_phones` into winner (case-insensitive email dedup, exact `phone_e164` match), jsonb returns `copied_emails` + `copied_phones` counters | `src/db/migrations/0002_merge_contacts.sql` + `src/actions/merge-contacts.ts` |
 | Soft-delete with Undo toast — Sonner-backed `undoable({...})` helper | `src/lib/undoable.ts` + `src/db/migrations/0003_soft_delete_contacts.sql` + `src/actions/contacts.ts` (`softDeleteContact` / `restoreContact`) |
 | Idempotent migration runner + GH Actions auto-apply | `scripts/apply-pending-migrations.mjs` + `.github/workflows/migrate.yml` |
 | Audit log | `src/lib/audit.ts` |

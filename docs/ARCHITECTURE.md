@@ -53,7 +53,7 @@ How the pieces fit together, why we made the choices we did, and where to extend
 | **Supabase Postgres** | Managed, point-in-time recovery, **pgvector** is first-class for our RAG use case, and the S3-compatible Storage handles call recordings without a separate bucket. |
 | **Drizzle ORM** | SQL-first, transparent migrations, plays well with Supabase's pooler, type-safe without runtime overhead. |
 | **Clerk** | Polished hosted UI (sign-in/sign-up), easy MFA, **webhooks** auto-sync our `users` table. We considered Supabase Auth but Clerk's DX is faster for a customer-facing app. |
-| **Twilio (subaccount + API key)** | Subaccount isolation means a leaked key only exposes the subaccount. API key (not auth token) means we can rotate without downtime. |
+| **Twilio (Account SID + Auth Token)** | Single-account credential covers both outbound SDK calls (in `src/lib/twilio/client.ts`) AND inbound webhook signature verification (in `src/lib/twilio/signature.ts`). The earlier subaccount + API-key pattern was simplified during v1 build — Kavora Systems runs a single Twilio account, not master + subaccount. |
 | **Deepgram Nova-2** | Cheapest STT with great accuracy; ~30 s for a 10-min call. Alternatives: AssemblyAI (similar cost, more features), Whisper (self-host = ops burden). |
 | **Anthropic Claude** | Best-in-class instruction following for outreach drafts in our voice. Haiku for summaries/scoring keeps cost down. |
 | **Voyage embeddings** | Cheaper than OpenAI, optimized for retrieval. We use 1024 dims to match the IVFFlat index lists. |
@@ -77,14 +77,16 @@ Tables:
 
 Money is stored as `value_cents` (integer) + `currency` (ISO 4217). Phone numbers are always E.164 (CHECK constraint on `contact_phones.phone_e164` + `toE164()` at write time).
 
-### Multi-value contact channels (T2-1)
+### Multi-value contact channels (T2-1 + v1.8 UI)
 
 `contacts.email` and `contacts.phone` remain as legacy single-value columns (denormalized for backwards compatibility with list views, AI outreach, and Twilio lookup paths). The source of truth lives in two normalized tables:
 
 - `contact_emails (id, contact_id, email, type, is_primary, created_at)` — type enum `('work' | 'home' | 'other')`. At most one row per contact may have `is_primary = true` (app-layer discipline; no DB-level partial unique constraint yet).
 - `contact_phones (id, contact_id, phone_e164, type, is_primary, created_at)` — same shape. `phone_e164` carries a CHECK constraint enforcing `^\+[1-9]\d{1,14}$`.
 
-8 new Server Actions in `src/actions/contacts.ts` (`addContactEmail`, `removeContactEmail`, `setPrimaryContactEmail`, `addContactPhone`, `removeContactPhone`, `setPrimaryContactPhone`, `setContactEmailsAndPhones`, `getContactEmailsAndPhones`). `createContact` / `updateContact` accept `emails` + `phones` JSON FormData fields and write to BOTH the new tables AND the legacy columns in a transaction. To drop the legacy columns safely, every read path that references `c.email` / `c.phone` must first be migrated to read from `contact_emails` / `contact_phones`.
+8 new Server Actions in `src/actions/contacts.ts` (`addContactEmail`, `removeContactEmail`, `setPrimaryContactEmail`, `addContactPhone`, `removeContactPhone`, `setPrimaryContactPhone`, `setContactEmailsAndPhones`, `getContactEmailsAndPhones`). `createContact` and `updateContact` accept `emails` + `phones` JSON FormData fields (wire format: `z.array(emailInputSchema|phoneInputSchema).parse(JSON.parse(formData.get("emails"|"phones")))`) and write to BOTH the new tables AND the legacy columns in a transaction.
+
+**v1.8 form UI** — both `new-contact-button.tsx` (create flow) and `edit-contact-sheet.tsx` (edit flow) expose the multi-value channels with per-row add / remove / "Make primary" toggle inside a `space-y-2 rounded-md border p-3` sub-section (matches the `SmsComposer` grouping pattern). Validation surfaces inline via `useMemo`-derived per-row error maps; phone validation runs `toE164()` from `src/lib/phone.ts` and email validation rejects non-RFC-5321 values without using HTML5 native validation (which would silently block form submission). Edit-sheet fetch on mount is cancel-safe via a `cancelled` flag. To drop the legacy columns safely, every read path that references `c.email` / `c.phone` must first be migrated to read from `contact_emails` / `contact_phones`.
 
 ### Soft-delete (contacts only)
 
@@ -98,12 +100,11 @@ Money is stored as `value_cents` (integer) + `currency` (ISO 4217). Phone number
 2. Reassign every FK referencing the loser to the winner (`notes`, `deals`, `calls`, `sms_messages`, `activities`, `ai_drafts`, `lead_scores`).
 3. `COALESCE(winner, loser)` for single-value scalars (`email`, `phone`, `profile_notes`, `source`, `company_id`, `owner_user_id`, `last_name`).
 4. Copy `contact_tags` rows from loser to winner via `INSERT ... ON CONFLICT DO NOTHING`.
-5. Delete the loser.
-6. Return jsonb `{ winner_id, loser_id, reassigned_*, copied_tags }`.
+5. **v1.8 — Channel reconciliation**: copy `contact_emails` rows from loser to winner, skipping case-insensitive duplicates on `email` value (preserving original case on the stored value), enforcing one-primary invariant per contact by demoting any existing winner primary row before promoting a loser primary. Same for `contact_phones` with exact match on `phone_e164` (the CHECK constraint guarantees canonical format). Counters `v_copied_emails` / `v_copied_phones` feed `copied_emails` / `copied_phones` keys in the jsonb return.
+6. Delete the loser (FK cascades clean up the loser's channel rows since they were already copied).
+7. Return jsonb `{ winner_id, loser_id, reassigned_*, copied_tags, copied_emails, copied_phones }`.
 
-`SECURITY DEFINER` + `search_path = public, pg_temp` pinning. The Server Action wrapper at `src/actions/merge-contacts.ts` is the auth + audit + revalidatePath boundary.
-
-**Known gap** — `merge_contacts` currently merges scalar `contacts.email` / `phone` only. After T2-1 ships, the loser's secondary channel rows (in `contact_emails` / `contact_phones`) are lost when the loser is deleted. Follow-up ticket: UNION the loser's channel rows into the winner's before the DELETE step.
+`SECURITY DEFINER` + `search_path = public, pg_temp` pinning. The Server Action wrapper at `src/actions/merge-contacts.ts` is the auth + audit + revalidatePath boundary; the new `copiedEmails` / `copiedPhones` fields flow into `logAudit.meta` via the existing `...result` spread. The migration runner detects the updated function body via a `pg_proc.prosrc` substring match on `'copied_emails'` so the runner can re-apply the migration even after the function exists. The runner's check ordering for this migration must place `0005_contact_emails_phones` BEFORE `0002_merge_contacts` — the function body references those tables, so a fresh-DB bootstrap would fail at 0002 with "relation does not exist" if the table-creating migration hadn't run yet (ordering is non-load-bearing on already-migrated DBs because each check is independently idempotent).
 
 ### List pages with DB summary views (T2-2 + T2-3)
 
@@ -177,7 +178,7 @@ Reusable `BottomSheet` wrapper in `src/components/ui/bottom-sheet.tsx` — `Shee
 | **Embed retries (RAG poisoning)** | `embedActivity` deletes existing chunks for the same `(orgId, sourceType, sourceId)` before re-inserting, so retries do not double-index. |
 | **PII leak to LLMs** | All LLM inputs pass through `redactPII` (SSN / credit-card / API-key patterns) before being sent. Original is preserved in DB. |
 | **Softphone concurrency** | Outbound calls go to the agent's cell with a "press 1" gate; only one customer call can be in flight per agent at a time. |
-| **DB migrations** | Drizzle-kit, applied via CI on `main` to staging branch first, manual promote to prod. |
+| **DB migrations** | Hand-written SQL in `src/db/migrations/00XX_*.sql` applied idempotently by `scripts/apply-pending-migrations.mjs` (each migration declares its own "already applied?" signature check — function body substring, column existence, view existence — before applying). GH Actions runs the script on push to `main` via `.github/workflows/migrate.yml` whenever `src/db/migrations/**` changes. Requires `DIRECT_URL` in repo secrets. Hand-written rather than drizzle-kit-generated because the files include PL/pgSQL functions, views, partial indexes, and CHECK constraints that the Drizzle TS schema can't express. |
 | **Outage fallback** | If Next.js is down, Twilio voice still routes via static TwiML. SMS inbound is lost (rare); retries on recovery. |
 | **PII / GDPR** | Per-contact "forget me" action wipes transcripts + embeddings + recordings. Audit-logged. |
 | **Audit log** | Every mutating action (contacts/deals/companies/notes/AI) calls `logAudit`. AI actions explicitly tagged `ai.draft`, `ai.style_saved`, `lead.score`. |
@@ -187,7 +188,7 @@ Reusable `BottomSheet` wrapper in `src/components/ui/bottom-sheet.tsx` — `Shee
 
 ## Security
 
-- Twilio subaccount + API key (rotatable).
+- Twilio Account SID + Auth Token (same credential for outbound SDK and inbound webhook signature verification; rotate via the Twilio Console).
 - Webhooks over HTTPS only.
 - Recording bucket is **private**; signed URLs only, 5-min TTL.
 - Clerk handles MFA; every dashboard route behind `auth()`.
@@ -220,7 +221,7 @@ Reusable `BottomSheet` wrapper in `src/components/ui/bottom-sheet.tsx` — `Shee
 
 ## Roadmap
 
-The Tier 1 quick wins (T1-1 sidebar shell, T1-2 `merge_contacts`, T1-3 Sonner `undoable` soft-delete) shipped as v1.5. The Tier 2/3 plan from the atomic-crm research is the source of truth for what's next:
+Tier 1 (T1-1 sidebar shell, T1-2 `merge_contacts`, T1-3 Sonner `undoable` soft-delete) shipped as v1.5. The first four Tier-2 items — DB summary views (T2-2), List/ListContent mobile split (T2-3), multi-value contact channels (T2-1), bottom-sheet create/edit dialogs (T2-4) — plus the multi-value form UI in new-contact + edit-contact sheets and the `merge_contacts` channel reconciliation — shipped as v1.7 → v1.8. The Tier 2/3 plan from the atomic-crm research is the source of truth for what's next:
 
 → **[docs/research/atomic-crm/apply-to-kavora.md](./research/atomic-crm/apply-to-kavora.md)** — full Tier 1 / Tier 2 / Tier 3 breakdown with scores, effort estimates, dependencies, and the recommended 8-week schedule.
 

@@ -102,7 +102,7 @@ Only required for **prod**. In dev, jobs run inline.
 ```bash
 pnpm install
 cp .env.example .env.local          # fill in values
-pnpm db:migrate                     # runs migrations against DIRECT_URL
+node scripts/apply-pending-migrations.mjs   # idempotent migration runner (recommended for hand-written SQL)
 pnpm dev                            # http://localhost:3000
 ```
 
