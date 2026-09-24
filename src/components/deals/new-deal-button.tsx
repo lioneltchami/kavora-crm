@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,8 @@ export function NewDealButton({
       await createDeal(fd);
       setOpen(false);
       router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not create deal");
     } finally {
       setSaving(false);
     }

@@ -1,11 +1,13 @@
 import { db } from "@/db";
 import { deals, pipelines, pipelineStages, KAVORA_ORG_ID, contacts } from "@/db/schema";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { NewDealButton } from "@/components/deals/new-deal-button";
 import { KanbanBoard } from "@/components/deals/kanban-board";
 
 export const dynamic = "force-dynamic";
+
+const KANBAN_DEAL_LIMIT = 500;
 
 export default async function DealsPage() {
   const pipelineRows = await db
@@ -23,36 +25,42 @@ export default async function DealsPage() {
     );
   }
 
-  const stages = await db
-    .select()
-    .from(pipelineStages)
-    .where(and(eq(pipelineStages.pipelineId, pipeline.id), eq(pipelineStages.orgId, KAVORA_ORG_ID)))
-    .orderBy(asc(pipelineStages.order));
-
-  const dealRows = await db
-    .select({
-      id: deals.id,
-      title: deals.title,
-      valueCents: deals.valueCents,
-      currency: deals.currency,
-      status: deals.status,
-      stageId: deals.stageId,
-      contactName: contacts.firstName,
-      contactLastName: contacts.lastName,
-      contactId: contacts.id,
-    })
-    .from(deals)
-    .leftJoin(contacts, eq(contacts.id, deals.contactId))
-    .where(and(eq(deals.orgId, KAVORA_ORG_ID), eq(deals.pipelineId, pipeline.id)));
+  const [stages, dealRows] = await Promise.all([
+    db
+      .select()
+      .from(pipelineStages)
+      .where(and(eq(pipelineStages.pipelineId, pipeline.id), eq(pipelineStages.orgId, KAVORA_ORG_ID)))
+      .orderBy(asc(pipelineStages.order)),
+    db
+      .select({
+        id: deals.id,
+        title: deals.title,
+        valueCents: deals.valueCents,
+        currency: deals.currency,
+        status: deals.status,
+        stageId: deals.stageId,
+        contactName: contacts.firstName,
+        contactLastName: contacts.lastName,
+        contactId: contacts.id,
+      })
+      .from(deals)
+      .leftJoin(
+        contacts,
+        and(eq(contacts.id, deals.contactId), isNull(contacts.deletedAt)),
+      )
+      .where(and(eq(deals.orgId, KAVORA_ORG_ID), eq(deals.pipelineId, pipeline.id)))
+      .orderBy(asc(deals.createdAt))
+      .limit(KANBAN_DEAL_LIMIT),
+  ]);
 
   return (
     <div>
       <PageHeader
         title="Deals"
-        description={`${dealRows.length} deals across ${stages.length} stages. Drag cards between stages to move deals.`}
+        description={`${dealRows.length}${dealRows.length === KANBAN_DEAL_LIMIT ? "+" : ""} deals across ${stages.length} stages. Drag cards between stages to move deals.`}
         actions={<NewDealButton pipelineId={pipeline.id} stages={stages} />}
       />
-      <KanbanBoard pipelineId={pipeline.id} stages={stages} deals={dealRows} />
+      <KanbanBoard stages={stages} deals={dealRows} />
     </div>
   );
 }

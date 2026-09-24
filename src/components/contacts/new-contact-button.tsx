@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { Input } from "@/components/ui/input";
@@ -43,6 +44,8 @@ export function NewContactButton() {
       await createContact(fd);
       setOpen(false);
       router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not create contact");
     } finally {
       setSubmitting(false);
     }

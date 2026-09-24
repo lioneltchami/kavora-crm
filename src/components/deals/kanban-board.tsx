@@ -32,11 +32,9 @@ type DealCard = {
 };
 
 export function KanbanBoard({
-  pipelineId,
   stages,
   deals,
 }: {
-  pipelineId: string;
   stages: PipelineStage[];
   deals: DealCard[];
 }) {
@@ -101,7 +99,10 @@ function StageColumn({
   deals: DealCard[];
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: stage.id });
-  const total = deals.reduce((sum, d) => sum + d.valueCents, 0);
+  const totalsByCurrency = new Map<string, number>();
+  for (const d of deals) {
+    totalsByCurrency.set(d.currency, (totalsByCurrency.get(d.currency) ?? 0) + d.valueCents);
+  }
 
   return (
     <div
@@ -120,9 +121,15 @@ function StageColumn({
         </div>
         <Badge variant="outline">{deals.length}</Badge>
       </div>
-      <div className="text-xs text-muted-foreground">
-        {(total / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })}
-      </div>
+      {totalsByCurrency.size > 0 ? (
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+          {[...totalsByCurrency.entries()].map(([currency, cents]) => (
+            <span key={currency}>
+              {(cents / 100).toLocaleString("en-US", { style: "currency", currency })}
+            </span>
+          ))}
+        </div>
+      ) : null}
       <div className="mt-2 space-y-2">
         {deals.map((d) => (
           <DealCard key={d.id} deal={d} />

@@ -59,7 +59,9 @@ export async function listContacts(opts: {
   const limit = opts.limit ?? 100;
 
   const whereParts = [eq(contactsSummaryView.org_id, ctx.orgId)];
-  if (opts.status) whereParts.push(eq(contactsSummaryView.status, opts.status));
+  if (opts.status && ["lead", "active", "customer", "archived"].includes(opts.status)) {
+    whereParts.push(eq(contactsSummaryView.status, opts.status));
+  }
   if (opts.q && opts.q.trim().length > 0) {
     const q = `%${opts.q.trim()}%`;
     whereParts.push(
