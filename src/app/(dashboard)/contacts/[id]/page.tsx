@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import {
   contacts,
@@ -8,6 +8,8 @@ import {
   notes,
   activities,
   aiSummaries,
+  contactEmails,
+  contactPhones,
   aiDrafts,
   deals,
   KAVORA_ORG_ID,
@@ -49,6 +51,21 @@ export default async function ContactDetailPage({
     .limit(1);
   const contact = contactRows[0];
   if (!contact) notFound();
+
+  const [emails, phones] = await Promise.all([
+    db
+      .select()
+      .from(contactEmails)
+      .where(eq(contactEmails.contactId, id))
+      .orderBy(desc(contactEmails.isPrimary), asc(contactEmails.createdAt)),
+    db
+      .select()
+      .from(contactPhones)
+      .where(eq(contactPhones.contactId, id))
+      .orderBy(desc(contactPhones.isPrimary), asc(contactPhones.createdAt)),
+  ]);
+  const primaryEmail = emails.find((e) => e.isPrimary) ?? emails[0] ?? null;
+  const primaryPhone = phones.find((p) => p.isPrimary) ?? phones[0] ?? null;
 
   // Fetch activity rows for this contact. The AI summaries FK is `activity_id`,
   // so we look them up via the activity ids (NOT call/sms ids — see Phase 1 review).
@@ -105,8 +122,8 @@ export default async function ContactDetailPage({
     <div className="space-y-6">
       <PageHeader
         title={[contact.firstName, contact.lastName].filter(Boolean).join(" ") || "Unknown contact"}
-        description={contact.email ?? undefined}
-        actions={<ContactActions contactId={contact.id} phone={contact.phone} />}
+        description={primaryEmail?.email ?? undefined}
+        actions={<ContactActions contactId={contact.id} phone={primaryPhone?.phoneE164 ?? contact.phone} />}
       />
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -114,11 +131,51 @@ export default async function ContactDetailPage({
           <CardHeader>
             <CardTitle className="text-base">Phone</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-lg">{formatPhoneForDisplay(contact.phone)}</span>
+          <CardContent className="space-y-2">
+            {phones.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No phone on file.</p>
+            ) : (
+              phones.map((p) => (
+                <div key={p.id} className="flex items-center justify-between">
+                  <span className="font-mono text-lg">{formatPhoneForDisplay(p.phoneE164)}</span>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline">{p.type}</Badge>
+                    {p.isPrimary && <Badge>Primary</Badge>}
+                  </div>
+                </div>
+              ))
+            )}
+            <div className="pt-2">
               <Badge variant="outline">{contact.status}</Badge>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-3">
+          <CardHeader>
+            <CardTitle className="text-base">Emails</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {emails.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No email on file.</p>
+            ) : (
+              <div className="space-y-2">
+                {emails.map((e) => (
+                  <div key={e.id} className="flex items-center justify-between">
+                    <a
+                      href={`mailto:${e.email}`}
+                      className="text-sm text-foreground hover:underline"
+                    >
+                      {e.email}
+                    </a>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{e.type}</Badge>
+                      {e.isPrimary && <Badge>Primary</Badge>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 

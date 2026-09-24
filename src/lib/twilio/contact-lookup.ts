@@ -1,7 +1,13 @@
 import "server-only";
 import { and, eq, isNotNull, isNull, desc } from "drizzle-orm";
 import { db } from "@/db";
-import { contacts, phoneNumbers, users, KAVORA_ORG_ID } from "@/db/schema";
+import {
+  contacts,
+  contactPhones,
+  phoneNumbers,
+  users,
+  KAVORA_ORG_ID,
+} from "@/db/schema";
 import { toE164 } from "@/lib/phone";
 
 /**
@@ -9,6 +15,11 @@ import { toE164 } from "@/lib/phone";
  * and `autoCreate` is true, creates a new lead contact (we don't want to
  * silently invent contacts on inbound SMS without a real lead, so default
  * autoCreate=false).
+ *
+ * After T2-1, a contact can have multiple phones (one row per channel in
+ * `contact_phones`). The lookup joins that table so inbound calls to a
+ * contact's non-primary phone still match the existing contact instead of
+ * creating a duplicate.
  */
 export async function findOrCreateContactByPhone(
   rawNumber: string,
@@ -18,12 +29,13 @@ export async function findOrCreateContactByPhone(
   if (!e164) return { contactId: null, contactName: null, phoneE164: null };
 
   const found = await db
-    .select()
-    .from(contacts)
+    .select({ id: contacts.id, firstName: contacts.firstName, lastName: contacts.lastName })
+    .from(contactPhones)
+    .innerJoin(contacts, eq(contacts.id, contactPhones.contactId))
     .where(
       and(
         eq(contacts.orgId, KAVORA_ORG_ID),
-        eq(contacts.phone, e164),
+        eq(contactPhones.phoneE164, e164),
         isNull(contacts.deletedAt),
       ),
     )
@@ -42,8 +54,6 @@ export async function findOrCreateContactByPhone(
     return { contactId: null, contactName: null, phoneE164: e164 };
   }
 
-  // Race-safe: the unique index on (orgId, phone) makes this idempotent under
-  // concurrent webhook fan-out. Second writer is silently dropped.
   const inserted = await db
     .insert(contacts)
     .values({
@@ -58,19 +68,19 @@ export async function findOrCreateContactByPhone(
     .returning();
   let created = inserted[0];
   if (!created) {
-    // A parallel request beat us — re-read.
     const existing = await db
       .select()
-      .from(contacts)
+      .from(contactPhones)
+      .innerJoin(contacts, eq(contacts.id, contactPhones.contactId))
       .where(
         and(
           eq(contacts.orgId, KAVORA_ORG_ID),
-          eq(contacts.phone, e164),
+          eq(contactPhones.phoneE164, e164),
           isNull(contacts.deletedAt),
         ),
       )
       .limit(1);
-    created = existing[0];
+    created = existing[0]?.contacts;
   }
   if (!created) throw new Error("Failed to auto-create contact");
 
