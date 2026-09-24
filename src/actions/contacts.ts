@@ -226,11 +226,11 @@ export async function updateContact(id: string, formData: FormData) {
   const { ctx } = await requireDbUser();
   const parsed = contactSchema.partial().parse({
     firstName: formData.get("firstName") || undefined,
-    lastName: formData.get("lastName") || undefined,
-    email: formData.get("email") || undefined,
-    phone: formData.get("phone") || undefined,
-    companyId: formData.get("companyId") || undefined,
-    source: formData.get("source") || undefined,
+    lastName: formData.get("lastName") || null,
+    email: formData.get("email") || null,
+    phone: formData.get("phone") || null,
+    companyId: formData.get("companyId") || null,
+    source: formData.get("source") || null,
     status: formData.get("status") || undefined,
   });
 
@@ -243,10 +243,81 @@ export async function updateContact(id: string, formData: FormData) {
   if (parsed.source !== undefined) update.source = parsed.source ?? null;
   if (parsed.status !== undefined) update.status = parsed.status;
 
-  await db
-    .update(contacts)
-    .set(update)
-    .where(and(eq(contacts.id, id), eq(contacts.orgId, ctx.orgId)));
+  const newEmail = parsed.email !== undefined ? parsed.email || null : undefined;
+  const newPhone =
+    parsed.phone !== undefined ? (parsed.phone ? toE164(parsed.phone) : null) : undefined;
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(contacts)
+      .set(update)
+      .where(and(eq(contacts.id, id), eq(contacts.orgId, ctx.orgId)));
+
+    if (newEmail !== undefined) {
+      await tx
+        .update(contactEmails)
+        .set({ isPrimary: false })
+        .where(
+          and(eq(contactEmails.contactId, id), eq(contactEmails.isPrimary, true)),
+        );
+      if (newEmail) {
+        const existing = await tx
+          .select({ id: contactEmails.id })
+          .from(contactEmails)
+          .where(
+            and(eq(contactEmails.contactId, id), eq(contactEmails.email, newEmail)),
+          )
+          .limit(1);
+        if (existing[0]) {
+          await tx
+            .update(contactEmails)
+            .set({ isPrimary: true })
+            .where(eq(contactEmails.id, existing[0].id));
+        } else {
+          await tx.insert(contactEmails).values({
+            contactId: id,
+            email: newEmail,
+            type: "work",
+            isPrimary: true,
+          });
+        }
+      }
+    }
+
+    if (newPhone !== undefined) {
+      await tx
+        .update(contactPhones)
+        .set({ isPrimary: false })
+        .where(
+          and(eq(contactPhones.contactId, id), eq(contactPhones.isPrimary, true)),
+        );
+      if (newPhone) {
+        const existing = await tx
+          .select({ id: contactPhones.id })
+          .from(contactPhones)
+          .where(
+            and(
+              eq(contactPhones.contactId, id),
+              eq(contactPhones.phoneE164, newPhone),
+            ),
+          )
+          .limit(1);
+        if (existing[0]) {
+          await tx
+            .update(contactPhones)
+            .set({ isPrimary: true })
+            .where(eq(contactPhones.id, existing[0].id));
+        } else {
+          await tx.insert(contactPhones).values({
+            contactId: id,
+            phoneE164: newPhone,
+            type: "work",
+            isPrimary: true,
+          });
+        }
+      }
+    }
+  });
 
   await logAudit({
     orgId: ctx.orgId,
