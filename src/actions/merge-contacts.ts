@@ -88,8 +88,8 @@ export async function mergeContact(input: {
     reassignedAiDrafts: raw.reassigned_ai_drafts,
     reassignedLeadScores: raw.reassigned_lead_scores,
     copiedTags: raw.copied_tags,
-    copiedEmails: raw.copied_emails,
-    copiedPhones: raw.copied_phones,
+    copiedEmails: raw.copied_emails ?? 0,
+    copiedPhones: raw.copied_phones ?? 0,
   };
 
   await logAudit({
