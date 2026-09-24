@@ -11,7 +11,18 @@ if (!url) {
 const client = new Client({ connectionString: url, ssl: { rejectUnauthorized: false } });
 await client.connect();
 
+// Order matters: 0005_contact_emails_phones creates the channel tables that
+// the channel-reconciliation block in merge_contacts (added by commit 7a9fc6a)
+// references. On a fresh DB the prior order (0002 before 0005) would fail with
+// "relation contact_emails does not exist" when applying 0002. Each entry is
+// independently idempotent, so this ordering change is a no-op for any DB that
+// already has all migrations applied.
 const checks = [
+  {
+    name: "0005_contact_emails_phones",
+    file: "src/db/migrations/0005_contact_emails_phones.sql",
+    existsQuery: "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'contact_emails') AS e",
+  },
   {
     name: "0002_merge_contacts",
     file: "src/db/migrations/0002_merge_contacts.sql",
@@ -26,11 +37,6 @@ const checks = [
     name: "0004_summary_views",
     file: "src/db/migrations/0004_summary_views.sql",
     existsQuery: "SELECT EXISTS (SELECT 1 FROM information_schema.views WHERE table_schema='public' AND table_name='contacts_summary') AS e",
-  },
-  {
-    name: "0005_contact_emails_phones",
-    file: "src/db/migrations/0005_contact_emails_phones.sql",
-    existsQuery: "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'contact_emails') AS e",
   },
 ];
 
