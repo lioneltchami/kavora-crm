@@ -47,3 +47,6 @@ src/db/migrations/meta/_journal.json.tmp
 .env.local-check
 .env*.local
 .env.vercel
+
+# Research scratch (S3-flagged 95 MB untracked dir)
+_research/

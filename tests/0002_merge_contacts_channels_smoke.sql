@@ -3,6 +3,15 @@
 -- MANUAL smoke — run with `psql $DATABASE_URL -f tests/0002_merge_contacts_channels_smoke.sql`
 -- AFTER applying src/db/migrations/0002_merge_contacts.sql (with channel reconciliation).
 --
+-- ⚠ STAGING-ONLY: the seeded org `_t1_4_channels` and UUIDs
+-- (77777777-…, 88888888-…) are synthetic test fixtures. This script MUST
+-- NOT run against production data. Either:
+--   (a) point $DATABASE_URL at a staging / preview clone, or
+--   (b) wrap the seed + run block below in `BEGIN; ... ROLLBACK;`.
+--   (c) for full cleanup of an un-wrapped run, see the DELETE block at
+--       the bottom of this file (also reproduced in the S4 runbook's
+--       "If smoke fails" section).
+--
 -- This script is transactional; it commits at the end so a reviewer can inspect
 -- the resulting rows. Wrap with `BEGIN; ... ROLLBACK;` if you want it hermetic.
 --
