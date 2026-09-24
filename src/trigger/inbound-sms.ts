@@ -55,7 +55,12 @@ export const handleInboundSms = task({
         .where(and(eq(activities.contactId, sms.contactId), eq(activities.refId, sms.id)))
         .limit(1);
       let activityId = existingActivity[0]?.id;
-      if (!activityId) {
+      if (activityId) {
+        await db
+          .update(activities)
+          .set({ summary: summary.summary })
+          .where(eq(activities.id, activityId));
+      } else {
         const inserted = await db
           .insert(activities)
           .values({
