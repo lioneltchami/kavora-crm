@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ChevronLeft } from "lucide-react";
 import {
   Sidebar as SidebarPrimitive,
   SidebarContent,
@@ -17,6 +18,7 @@ import {
   SidebarProvider,
   SidebarRail,
   SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import {
@@ -53,6 +55,7 @@ function NavRow({
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { state, toggleSidebar } = useSidebar();
 
   return (
     <SidebarProvider>
@@ -70,7 +73,21 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             "[&_[data-sidebar=menu-button][data-active=true]]:text-secondary-foreground"
           )}
         >
-          <SidebarBrand />
+          <div className="relative">
+            <SidebarBrand />
+            {state === "expanded" && (
+              <button
+                type="button"
+                onClick={toggleSidebar}
+                aria-label="Collapse sidebar"
+                aria-expanded="true"
+                title="Collapse sidebar (⌘B)"
+                className="absolute top-3 right-3 inline-flex h-7 w-7 items-center justify-center rounded-full text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring transition-colors"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+            )}
+          </div>
           <SidebarContent>
             <SidebarGroup>
               <SidebarGroupLabel>Workspace</SidebarGroupLabel>
