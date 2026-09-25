@@ -1,7 +1,7 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { calls, KAVORA_ORG_ID } from "@/db/schema";
+import { calls } from "@/db/schema";
 import { deepgramConfigured, env } from "@/lib/env";
 
 /**
@@ -76,7 +76,7 @@ export async function transcribeCall(opts: {
 
     return {
       callId: callRow[0].id,
-      orgId: callRow[0].orgId ?? KAVORA_ORG_ID,
+      orgId: callRow[0].orgId,
       transcript,
     };
   } catch (err) {

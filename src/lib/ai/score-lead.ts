@@ -4,7 +4,7 @@ import { z } from "zod";
 import { anthropicConfigured, env } from "@/lib/env";
 import { redactPII } from "@/lib/pii";
 import { db } from "@/db";
-import { contacts, leadScores, activities, aiSummaries, KAVORA_ORG_ID } from "@/db/schema";
+import { contacts, leadScores, activities, aiSummaries } from "@/db/schema";
 import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 
 /**
@@ -36,7 +36,6 @@ export async function scoreContact(contactId: string): Promise<ScoreResult | nul
     .where(
       and(
         eq(contacts.id, contactId),
-        eq(contacts.orgId, KAVORA_ORG_ID),
         isNull(contacts.deletedAt),
       ),
     )
@@ -113,7 +112,7 @@ Return strict JSON: {"score": 0-100, "rationale": "<= 30 words"}`;
     const score = Math.round(parsed.data.score);
 
     await db.insert(leadScores).values({
-      orgId: KAVORA_ORG_ID,
+      orgId: contact.orgId,
       contactId,
       score,
       rationale: parsed.data.rationale,
