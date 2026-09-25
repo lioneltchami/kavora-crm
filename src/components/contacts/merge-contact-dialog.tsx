@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { listContacts } from "@/actions/contacts";
-import { mergeContact, type MergeContactResult } from "@/actions/merge-contacts";
+import { mergeContact } from "@/actions/merge-contacts";
 import { formatPhoneForDisplay } from "@/lib/phone";
 import type { ContactSummary } from "@/db/views";
 
@@ -120,6 +120,7 @@ export function MergeContactDialog({
               <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 autoFocus
+                aria-label="Search contacts to merge"
                 placeholder="Search by name, email, or phone…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
