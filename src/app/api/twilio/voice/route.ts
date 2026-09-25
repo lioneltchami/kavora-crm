@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { calls, activities, KAVORA_ORG_ID } from "@/db/schema";
+import { calls, activities } from "@/db/schema";
 import { buildWebhookUrl } from "@/lib/twilio/client";
 import { verifyTwilioWebhook } from "@/lib/twilio/signature";
 import { voiceInbound } from "@/lib/twilio/twiml";
@@ -31,15 +31,23 @@ export async function POST(req: Request) {
 
   const { contactId, phoneE164 } = await findOrCreateContactByPhone(From, { autoCreate: true });
   const phoneNumberRow = await findPhoneNumberByE164(To);
+  // The orgId is the org that owns the Twilio number Twilio hit us for — there is
+  // no Clerk session in a webhook. If the lookup missed (To number isn't in
+  // phone_numbers), we 400 — accepting a call tagged with an unknown org would
+  // leak it into the default org's history.
+  if (!phoneNumberRow) {
+    return new NextResponse("Unknown To number", { status: 400 });
+  }
+  const orgId = phoneNumberRow.orgId;
 
   // Insert the call row idempotently, then insert the linked activity row
   // so AI summaries (Phase 3) have a parent to attach to.
   const insertedCalls = await db
     .insert(calls)
     .values({
-      orgId: KAVORA_ORG_ID,
+      orgId,
       contactId,
-      phoneNumberId: phoneNumberRow?.id ?? null,
+      phoneNumberId: phoneNumberRow.id,
       twilioCallSid: CallSid,
       direction: "inbound",
       fromNumber: phoneE164 ?? From,
@@ -54,13 +62,13 @@ export async function POST(req: Request) {
     const existing = await db
       .select({ id: calls.id })
       .from(calls)
-      .where(and(eq(calls.twilioCallSid, CallSid), eq(calls.orgId, KAVORA_ORG_ID)))
+      .where(and(eq(calls.twilioCallSid, CallSid), eq(calls.orgId, orgId)))
       .limit(1);
     callId = existing[0]?.id;
   }
   if (callId) {
     await db.insert(activities).values({
-      orgId: KAVORA_ORG_ID,
+      orgId,
       type: "call",
       contactId,
       refId: callId,

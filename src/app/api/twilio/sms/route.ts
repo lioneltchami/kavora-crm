@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { smsMessages, activities, KAVORA_ORG_ID } from "@/db/schema";
+import { smsMessages, activities } from "@/db/schema";
 import { buildWebhookUrl } from "@/lib/twilio/client";
 import { verifyTwilioWebhook } from "@/lib/twilio/signature";
 import { smsInboundAck } from "@/lib/twilio/twiml";
@@ -33,13 +33,21 @@ export async function POST(req: Request) {
     findOrCreateContactByPhone(From, { autoCreate: true }),
     findPhoneNumberByE164(To),
   ]);
+  // The orgId is the org that owns the Twilio number Twilio hit us for — there is
+  // no Clerk session in a webhook. If the lookup missed (To number isn't in
+  // phone_numbers), we 400 — accepting an SMS tagged with an unknown org would
+  // leak it into the default org's history.
+  if (!phoneNumberRow) {
+    return new NextResponse("Unknown To number", { status: 400 });
+  }
+  const orgId = phoneNumberRow.orgId;
 
   const insertedSms = await db
     .insert(smsMessages)
     .values({
-      orgId: KAVORA_ORG_ID,
+      orgId,
       contactId,
-      phoneNumberId: phoneNumberRow?.id ?? null,
+      phoneNumberId: phoneNumberRow.id,
       twilioMessageSid: MessageSid,
       direction: "inbound",
       fromNumber: phoneE164 ?? From,
@@ -55,7 +63,7 @@ export async function POST(req: Request) {
     const existing = await db
       .select({ id: smsMessages.id })
       .from(smsMessages)
-      .where(and(eq(smsMessages.twilioMessageSid, MessageSid), eq(smsMessages.orgId, KAVORA_ORG_ID)))
+      .where(and(eq(smsMessages.twilioMessageSid, MessageSid), eq(smsMessages.orgId, orgId)))
       .limit(1);
     smsId = existing[0]?.id;
   }
@@ -67,7 +75,7 @@ export async function POST(req: Request) {
       .limit(1);
     if (!existingActivity[0]) {
       await db.insert(activities).values({
-        orgId: KAVORA_ORG_ID,
+        orgId,
         type: "sms",
         contactId,
         refId: smsId,
