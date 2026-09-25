@@ -6,6 +6,16 @@
 
 ---
 
+## Shipped so far (v1.8)
+
+The bulk of Tier 1 + the first four Tier 2 items have shipped in production as v1.8 (and earlier in v1.5 / v1.7). The remaining items (T2-5, T3-1, T3-2, T3-3) are the v2 backlog. See "Backlog (not on v2 path)" for out-of-scope additions.
+
+- **Tier 1 (v1.5):** T1-1 sidebar shell (`26cb28a`) · T1-2 `merge_contacts` PL/pgSQL (`0078b9f`) · T1-3 Sonner `undoable` soft-delete (`0078b9f`)
+- **Tier 2 batch 1 (v1.7 → v1.8):** T2-1 multi-value contact channels + per-row UI (`86da74b`) · T2-2 DB summary views (`a1f195e`) · T2-3 `<List>`/`<ListContent>` split with `useIsMobile()` (`a1f195e`) · T2-4 bottom-sheet create/edit (`86da74b`)
+- **v1.8 polish layer:** `merge_contacts` channel reconciliation (`7a9fc6a`) · `MergeContactDialog` UI (`0b200ad`) · "Merge with…" menu item (`b2246f1`) · `validateMergeCandidates` Server Action (`341e055`) · `mergeContact` returns `MergeContactResult` (`4fdec63`) · `BottomSheet.submitDisabled` prop split (`ff1a322`) · sidebar circular chevron toggle (`fc19eef`) · `useSidebar` context error fix (`3f90915`) · idempotent migration runner + GH Actions auto-apply (`574ced1`) · docs refresh to v1.8 (`be83126`)
+
+---
+
 ## Prioritization rubric
 
 For each candidate pattern, score on three axes (1–5 each):
@@ -28,6 +38,7 @@ For each candidate pattern, score on three axes (1–5 each):
 - **Why:** The `<Sidebar variant="floating" collapsible="icon">` from shadcn/ui gives cookie-persisted collapse, `Cmd/Ctrl+B` shortcut, mobile drawer — all stock. Kavora's current sidebar is custom and rough.
 - **Effort:** **S** (~1 day)
 - **Dependencies:** None — pure UI
+- **Status:** ✅ Shipped in `26cb28a` (v1.5). Polished in v1.8 with circular chevron toggle (`fc19eef`) and `useSidebar` context fix (`3f90915`).
 
 ### T1-2. `merge_contacts` dedupe function
 - **Source:** [`domain-model.md` §13 What to Borrow](#) + the actual function at `supabase/schemas/02_functions.sql:276-426`
@@ -35,6 +46,7 @@ For each candidate pattern, score on three axes (1–5 each):
 - **Why:** ~150 lines of PL/pgSQL that atomically reassigns tasks, deal `contact_id`s, and `contact_notes` while merging emails/phones/tags by key. Saves building from scratch AND fixes a class of bugs Kavora will hit within a month of usage.
 - **Effort:** **S–M** (~3 days incl. tests)
 - **Dependencies:** None — pure DB function + Server Action
+- **Status:** ✅ Shipped in `0078b9f` (v1.5, PL/pgSQL + audit + smoke test). v1.8 polish: channel reconciliation via `contact_emails` / `contact_phones` UNION with `copied_emails` / `copied_phones` counters (`7a9fc6a`, `0c9ea06`), `mergeContact` returns `MergeContactResult` instead of redirecting (`4fdec63`), `validateMergeCandidates` Server Action for UI pre-check (`341e055`), `MergeContactDialog` UI (`0b200ad`), "Merge with…" menu item (`b2246f1`).
 
 ### T1-3. Sonner + undoable-mutation pattern for soft deletes + bulk actions
 - **Source:** [`technical-architecture.md` §11 Notifications](#)
@@ -42,6 +54,7 @@ For each candidate pattern, score on three axes (1–5 each):
 - **Why:** The "delete → toast with Undo" pattern is now table stakes for admin UX. Kavora has no soft-delete mechanism and no toast system. Building both unlocks future bulk-action features.
 - **Effort:** **S** (~1 day)
 - **Dependencies:** None — UI + Server Action
+- **Status:** ✅ Shipped in `0078b9f` (v1.5 — Sonner install + `undoable()` helper wired into soft-delete with `deleted_at` column).
 
 ---
 
@@ -53,6 +66,7 @@ For each candidate pattern, score on three axes (1–5 each):
 - **Why:** Today's `phone varchar(32)` and `email text` are single-value. Real CRM needs `[{ email, type: "Work" | "Home" | "Other" }]` shape with types. Atomic CRM's `jsonb` approach is the cleanest — type-safe in TS, indexed for search.
 - **Effort:** **M** (~1 week incl. migration of existing data)
 - **Dependencies:** Decide on a migration strategy for the existing single-value columns
+- **Status:** ✅ Shipped in `86da74b` (v1.7 → v1.8). Implemented as normalized tables `contact_emails` / `contact_phones` with shared `contact_channel_type` enum (work/home/other), E.164 CHECK constraint, and backfill from legacy `contacts.email` / `contacts.phone`. UI: per-row add/remove in both `new-contact-button` (`818b98b`) and `edit-contact-sheet` (`77c68c0`). `updateContact` consumes JSON arrays from FormData (`201d7f8`). The atomic-crm-style `jsonb` was rejected in favor of normalized tables for E.164 lookup + FK cascade.
 
 ### T2-2. DB views for list screens
 - **Source:** [`domain-model.md` §13 What to Borrow](#) + the actual views (`contacts_summary`, `companies_summary`, `activity_log`)
@@ -60,6 +74,7 @@ For each candidate pattern, score on three axes (1–5 each):
 - **Why:** Pre-computed joins in SQL = no N+1 in Drizzle. Every list page (`/contacts`, `/companies`, `/calls`, `/inbox`) gets faster for free. The `activity_log` UNION ALL view is the foundation for the contact timeline.
 - **Effort:** **S–M** (~2–3 days)
 - **Dependencies:** Should land alongside T1-1 sidebar so list pages re-render with the new shell
+- **Status:** ✅ Shipped in `a1f195e` (v1.7). `contacts_summary` + `companies_summary` live; `activity_log` UNION ALL view deferred (covered by T3-1 below).
 
 ### T2-3. `<List>` + `<ListContent>` split with `useIsMobile()`
 - **Source:** [`technical-architecture.md` §5 List Page Patterns](#)
@@ -67,6 +82,7 @@ For each candidate pattern, score on three axes (1–5 each):
 - **Why:** Single route serves both dense desktop table and mobile infinite-scroll without responsive CSS tricks. Kavora's current list pages are desktop-only with `md:hidden` workarounds.
 - **Effort:** **M** (~1 week, refactor 4 list pages)
 - **Dependencies:** Should land after T1-1 sidebar
+- **Status:** ✅ Shipped in `a1f195e` (v1.7).
 
 ### T2-4. Sheet `side="bottom"` for create/edit
 - **Source:** [`technical-architecture.md` §10 Modal/Drawer/Sheet](#)
@@ -74,6 +90,7 @@ For each candidate pattern, score on three axes (1–5 each):
 - **Why:** Mobile users can't easily use centered modals. Bottom sheet is the right mobile pattern. Atomic CRM uses sticky footer Save button — production-grade UX.
 - **Effort:** **S–M** (~3 days, refactor new-contact/new-deal/new-company dialogs)
 - **Dependencies:** None — pure UI primitives
+- **Status:** ✅ Shipped in `86da74b` (v1.7 → v1.8) as the `<BottomSheet>` primitive. v1.8 polish: `submitDisabled` prop split from `isSubmitting` to fix the "submit button stays disabled after submit completes" pitfall (`ff1a322`).
 
 ### T2-5. `withLifecycleCallbacks` data-provider pattern for files + search
 - **Source:** [`domain-model.md` §13 What to Borrow](#) + their data provider hooks
@@ -111,16 +128,18 @@ For each candidate pattern, score on three axes (1–5 each):
 
 ## Recommended implementation order (8 weeks to v2)
 
+The original v2 plan below has been **mostly executed as v1.8** (see "Shipped so far (v1.8)" above). Items in **bold** shipped in production; items not bold remain in the v2 backlog.
+
 | Week | Items | Cumulative impact |
 |---|---|---|
-| **W1** | T1-1 (sidebar shell) | Production-feeling admin shell |
-| **W2** | T1-3 (Sonner + undo), T2-4 (bottom sheet) | Mobile-friendly forms |
-| **W3** | T2-2 (DB views), T2-3 (`useIsMobile()` refactor) | Fast list pages, true mobile UX |
-| **W4** | T1-2 (`merge_contacts`) | Data quality win, deduplication UX |
-| **W5** | T2-1 (`email_jsonb` / `phone_jsonb` migration) | Real CRM-grade contact data |
-| **W6** | T2-5 (`withLifecycleCallbacks` for audit + AI) | Cross-cutting observability + AI |
-| **W7** | T3-1 (event-sourced activity_log) | AI-touchpoint analytics + timeline |
-| **W8** | Buffer / docs / customer demos | Ship v2 |
+| **W1** | **T1-1 (sidebar shell)** | Production-feeling admin shell |
+| **W2** | **T1-3 (Sonner + undo), T2-4 (bottom sheet)** | Mobile-friendly forms |
+| **W3** | **T2-2 (DB views), T2-3 (`useIsMobile()` refactor)** | Fast list pages, true mobile UX |
+| **W4** | **T1-2 (`merge_contacts`)** | Data quality win, deduplication UX |
+| **W5** | **T2-1 (`email_jsonb` / `phone_jsonb` migration)** | Real CRM-grade contact data |
+| W6 | T2-5 (`withLifecycleCallbacks` for audit + AI) | Cross-cutting observability + AI |
+| W7 | T3-1 (event-sourced activity_log) | AI-touchpoint analytics + timeline |
+| W8 | Buffer / docs / customer demos | Ship v2 |
 
 ---
 
