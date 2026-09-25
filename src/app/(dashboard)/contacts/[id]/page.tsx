@@ -123,7 +123,15 @@ export default async function ContactDetailPage({
       <PageHeader
         title={[contact.firstName, contact.lastName].filter(Boolean).join(" ") || "Unknown contact"}
         description={primaryEmail?.email ?? undefined}
-        actions={<ContactActions contactId={contact.id} phone={primaryPhone?.phoneE164 ?? contact.phone} />}
+        actions={
+          <ContactActions
+            contactId={contact.id}
+            phone={primaryPhone?.phoneE164 ?? contact.phone}
+            firstName={contact.firstName}
+            lastName={contact.lastName}
+            email={primaryEmail?.email ?? null}
+          />
+        }
       />
 
       <div className="grid gap-4 lg:grid-cols-3">

@@ -1,18 +1,32 @@
 "use client";
 
-import { Phone, MessageSquare, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { GitMerge, MessageSquare, MoreVertical, Pencil, Phone, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { startOutboundCall } from "@/actions/communications";
 import { softDeleteContact, restoreContact } from "@/actions/contacts";
 import { undoable } from "@/lib/undoable";
-import { toast } from "sonner";
+import { MergeContactDialog } from "@/components/contacts/merge-contact-dialog";
 
-export function ContactActions({ contactId, phone }: { contactId: string; phone: string | null }) {
+export function ContactActions({
+  contactId,
+  phone,
+  firstName,
+  lastName,
+  email,
+}: {
+  contactId: string;
+  phone: string | null;
+  firstName?: string;
+  lastName?: string | null;
+  email?: string | null;
+}) {
   const disabled = !phone;
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
 
   async function onCall() {
     try {
@@ -70,6 +84,16 @@ export function ContactActions({ contactId, phone }: { contactId: string; phone:
             </button>
             <button
               type="button"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted"
+              onClick={() => {
+                setMenuOpen(false);
+                setMergeOpen(true);
+              }}
+            >
+              <GitMerge className="h-4 w-4" /> Merge with…
+            </button>
+            <button
+              type="button"
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-red-600 hover:bg-muted"
               onClick={() => {
                 setMenuOpen(false);
@@ -81,6 +105,20 @@ export function ContactActions({ contactId, phone }: { contactId: string; phone:
           </div>
         )}
       </div>
+      <MergeContactDialog
+        open={mergeOpen}
+        onOpenChange={setMergeOpen}
+        winner={{
+          id: contactId,
+          firstName: firstName ?? null,
+          lastName: lastName ?? null,
+          email: email ?? null,
+        }}
+        onMerged={() => {
+          toast.success("Contacts merged");
+          router.push(`/contacts/${contactId}`);
+        }}
+      />
     </div>
   );
 }
