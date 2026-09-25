@@ -4,34 +4,19 @@ import { eq } from "drizzle-orm";
 import { adminDb } from "@/db";
 import { users, KAVORA_ORG_ID } from "@/db/schema";
 import { env } from "@/lib/env";
-import {
-  attachMembership,
-  deleteOrganization,
-  detachMembership,
-  upsertOrganization,
-  type ClerkOrgMembershipPayload,
-  type ClerkOrgPayload,
-} from "@/lib/clerk-orgs";
 
 /**
- * Clerk webhook — keeps our `users` and `organizations` tables in sync with
- * Clerk users, organizations, and memberships.
+ * Clerk webhook — keeps our `users` table in sync with Clerk users.
  *
  * Configure in Clerk dashboard:
  *   Endpoint: https://<your-domain>/api/webhooks/clerk
- *   Events: user.created, user.updated, user.deleted,
- *           organization.created, organization.updated, organization.deleted,
- *           organizationMembership.created, organizationMembership.updated,
- *           organizationMembership.deleted
+ *   Events: user.created, user.updated, user.deleted
  *   Signing secret → CLERK_WEBHOOK_SECRET env var
  *
- * Organizations must be enabled in the Clerk dashboard (Settings →
- * Organizations → "Enable Organizations") for org events to fire.
+ * Kavora runs single-tenant per deployment, so we only consume user events.
  *
  * Uses `adminDb` (not `db`) because the webhook has no Clerk session —
- * RLS would silently block every `users` write otherwise. The Clerk-orgs
- * helpers internally also use `adminDb` for `users` updates and audit_log
- * inserts.
+ * RLS would silently block every `users` write otherwise.
  */
 export async function POST(req: Request) {
   const secret = env.CLERK_WEBHOOK_SECRET;
@@ -97,20 +82,6 @@ export async function POST(req: Request) {
       case "user.deleted":
         await adminDb.delete(users).where(eq(users.id, evt.data.id!));
         break;
-      case "organization.created":
-      case "organization.updated":
-        await upsertOrganization(evt.data);
-        break;
-      case "organization.deleted":
-        await deleteOrganization(evt.data);
-        break;
-      case "organizationMembership.created":
-      case "organizationMembership.updated":
-        await attachMembership(evt.data);
-        break;
-      case "organizationMembership.deleted":
-        await detachMembership(evt.data);
-        break;
       default:
         break;
     }
@@ -124,13 +95,7 @@ export async function POST(req: Request) {
 type ClerkWebhookEvent =
   | { type: "user.created"; data: ClerkUserPayload }
   | { type: "user.updated"; data: ClerkUserPayload }
-  | { type: "user.deleted"; data: { id: string } }
-  | { type: "organization.created"; data: ClerkOrgPayload }
-  | { type: "organization.updated"; data: ClerkOrgPayload }
-  | { type: "organization.deleted"; data: ClerkOrgPayload }
-  | { type: "organizationMembership.created"; data: ClerkOrgMembershipPayload }
-  | { type: "organizationMembership.updated"; data: ClerkOrgMembershipPayload }
-  | { type: "organizationMembership.deleted"; data: ClerkOrgMembershipPayload };
+  | { type: "user.deleted"; data: { id: string } };
 
 type ClerkUserPayload = {
   id: string;

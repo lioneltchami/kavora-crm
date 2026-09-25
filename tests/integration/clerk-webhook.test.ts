@@ -3,7 +3,7 @@
  *
  * Builds Svix-signed payloads with the same `svix` package the handler uses
  * to verify them, then exercises the real `POST` handler in-process. The DB
- * and audit helpers are mocked so the suite stays offline-friendly and fast.
+ * helpers are mocked so the suite stays offline-friendly and fast.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -16,18 +16,6 @@ vi.mock("@/lib/env", () => ({
   env: {
     CLERK_WEBHOOK_SECRET: SECRET,
   },
-}));
-
-const upsertOrganization = vi.fn(async (_data: unknown) => undefined);
-const deleteOrganization = vi.fn(async (_data: unknown) => undefined);
-const attachMembership = vi.fn(async (_data: unknown) => undefined);
-const detachMembership = vi.fn(async (_data: unknown) => undefined);
-
-vi.mock("@/lib/clerk-orgs", () => ({
-  upsertOrganization: (data: unknown) => upsertOrganization(data),
-  deleteOrganization: (data: unknown) => deleteOrganization(data),
-  attachMembership: (data: unknown) => attachMembership(data),
-  detachMembership: (data: unknown) => detachMembership(data),
 }));
 
 type DbStub = {
@@ -93,10 +81,6 @@ function buildRequest(body: object, opts: { unsigned?: boolean } = {}): Request 
 }
 
 beforeEach(() => {
-  upsertOrganization.mockClear();
-  deleteOrganization.mockClear();
-  attachMembership.mockClear();
-  detachMembership.mockClear();
   insertChain.values.mockClear();
   insertChain.onConflictDoUpdate.mockClear();
   updateChain.set.mockClear();
@@ -104,82 +88,24 @@ beforeEach(() => {
   deleteChain.where.mockClear();
 });
 
-describe("POST /api/webhooks/clerk — organization events", () => {
-  it("handles organization.created via upsertOrganization", async () => {
-    const res = await POST(
-      buildRequest({
-        type: "organization.created",
-        data: { id: "org_test_123", name: "Acme Corp", slug: "acme" },
-      }) as never,
-    );
-    expect(res.status).toBe(200);
-    expect(upsertOrganization).toHaveBeenCalledWith({
-      id: "org_test_123",
-      name: "Acme Corp",
-      slug: "acme",
-    });
-  });
-
-  it("handles organization.deleted via deleteOrganization", async () => {
-    const res = await POST(
-      buildRequest({
-        type: "organization.deleted",
-        data: { id: "org_test_456" },
-      }) as never,
-    );
-    expect(res.status).toBe(200);
-    expect(deleteOrganization).toHaveBeenCalledWith({ id: "org_test_456" });
-  });
-
-  it("handles organizationMembership.created via attachMembership", async () => {
-    const res = await POST(
-      buildRequest({
-        type: "organizationMembership.created",
-        data: {
-          id: "om_test_789",
-          organization: { id: "org_test_123", name: "Acme Corp", slug: "acme" },
-          public_user_data: { user_id: "user_test_abc" },
-        },
-      }) as never,
-    );
-    expect(res.status).toBe(200);
-    expect(attachMembership).toHaveBeenCalledWith({
-      id: "om_test_789",
-      organization: { id: "org_test_123", name: "Acme Corp", slug: "acme" },
-      public_user_data: { user_id: "user_test_abc" },
-    });
-  });
-
-  it("handles organizationMembership.deleted via detachMembership", async () => {
-    const res = await POST(
-      buildRequest({
-        type: "organizationMembership.deleted",
-        data: {
-          id: "om_test_790",
-          organization: { id: "org_test_123", name: "Acme Corp", slug: "acme" },
-          public_user_data: { user_id: "user_test_abc" },
-        },
-      }) as never,
-    );
-    expect(res.status).toBe(200);
-    expect(detachMembership).toHaveBeenCalledWith({
-      id: "om_test_790",
-      organization: { id: "org_test_123", name: "Acme Corp", slug: "acme" },
-      public_user_data: { user_id: "user_test_abc" },
-    });
-  });
-
+describe("POST /api/webhooks/clerk — signature verification", () => {
   it("returns 401 when the svix signature is missing", async () => {
     const res = await POST(
       buildRequest(
         {
-          type: "organization.created",
-          data: { id: "org_test_999", name: "Bad" },
+          type: "user.created",
+          data: {
+            id: "user_test_999",
+            email_addresses: [],
+            primary_email_address_id: null,
+            first_name: null,
+            last_name: null,
+            image_url: null,
+          },
         },
         { unsigned: true },
       ) as never,
     );
     expect(res.status).toBe(401);
-    expect(upsertOrganization).not.toHaveBeenCalled();
   });
 });
