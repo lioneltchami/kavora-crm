@@ -35,6 +35,15 @@ export async function POST(req: Request) {
     );
   }
 
+  // TODO(phase-a.5): the dial-gate-bootstrap Twilio webhook has no Clerk
+  // session, no `From` number that maps to a `phone_numbers` row, and the
+  // `To` number here is the agent's cell (not a Twilio number we own), so
+  // there is no clean per-context seam for `orgId`. The `calls.orgId`
+  // column is NOT NULL, so we insert a placeholder and log a warning. The
+  // right fix is to look up the agent's user by `phoneForRouting = To` and
+  // use their `users.orgId` (the agent must exist in our DB before a
+  // outbound call is placed, which is the precondition this bootstrap
+  // depends on anyway).
   await db
     .insert(calls)
     .values({
