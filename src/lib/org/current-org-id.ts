@@ -1,28 +1,11 @@
+/**
+ * Single-tenant per deployment — returns the hardcoded `KAVORA_ORG_ID`.
+ * When Kavora goes multi-tenant in the future, this seam is the place to
+ * read from Clerk session instead.
+ */
 import "server-only";
-import { cache } from "react";
-import { auth } from "@clerk/nextjs/server";
+import { KAVORA_ORG_ID } from "@/db/schema";
 
-/**
- * The Clerk session's active Organization id, or null.
- *   - No Clerk session             → null
- *   - User has no active org       → null
- *   - User has an active org       → "org_xxxxxx"
- *
- * The *only* canonical seam for "which org is this request scoped to".
- * Server Actions, route handlers, and audit-log calls read it through here.
- */
-export const currentOrgId = cache(async (): Promise<string | null> => {
-  const { orgId } = await auth();
-  return orgId ?? null;
-});
-
-/**
- * Throws `NO_ACTIVE_ORG` if there is no active Clerk organization for the
- * current session. Use only at boundaries where the rest of the code cannot
- * tolerate a missing orgId (e.g. writing to a table that requires `org_id`).
- */
-export async function requireOrgId(): Promise<string> {
-  const id = await currentOrgId();
-  if (!id) throw new Error("NO_ACTIVE_ORG");
-  return id;
+export function currentOrgId(): string {
+  return KAVORA_ORG_ID;
 }

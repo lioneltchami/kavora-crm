@@ -810,15 +810,8 @@ export type ContactPhone = typeof contactPhones.$inferSelect;
 export type NewContactPhone = typeof contactPhones.$inferInsert;
 
 /**
- * Back-compat alias for the canonical Kavora organization id.
- *
- * @deprecated Use `currentOrgId()` from `@/lib/org` instead. The hardcoded
- * value survives only because the seed migration
- * (`src/db/migrations/0006_seed_kavora_org.sql`) and the unit-test
- * fixture (`tests/integration/clerk-webhook.test.ts`) still reference it.
- * All app code must read the org id from the Clerk session at request
- * time via the helper. Will be removed once the seed migration no longer
- * needs the literal and the test fixture has been migrated.
+ * Canonical Kavora organization id. Every provisioned row carries this value
+ * for `orgId` while Kavora is single-tenant per deployment.
  */
 export const KAVORA_ORG_ID = "kavora";
 

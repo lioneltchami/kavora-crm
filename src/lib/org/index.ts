@@ -1,1 +1,1 @@
-export { currentOrgId, requireOrgId } from "./current-org-id";
+export { currentOrgId } from "./current-org-id";
