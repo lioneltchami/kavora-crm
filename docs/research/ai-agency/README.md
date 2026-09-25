@@ -63,18 +63,35 @@
 
 ## Status
 
-- **Phase A — Multi-tenant core: SHIPPED 2026-09-24** (commit `62fb045`)
-  - 18 org-scoped tables have RLS enabled with full SELECT/INSERT/UPDATE/DELETE policies
-  - Clerk Organizations wired (webhook handles `organization.*` + `organizationMembership.*` events)
+- **Phase A scaffolding shipped 2026-09-24** (commit `62fb045`): RLS + adminDb + Clerk webhook ready. Clerk Organizations deferred pending 3+ paying clients (Clerk Pro $25/mo required). Migration history preserved in `phase-a-prompt.md` for future activation.
+  - 18 org-scoped tables have RLS enabled with full SELECT/INSERT/UPDATE/DELETE policies (dormant in v1 single-tenant mode)
+  - Two-pool design: `db` (RLS-firing, default for app code) + `adminDb` (bypasses RLS, for sessionless contexts) — kept as defense-in-depth
   - pgTAP isolation harness: **32/32 tests pass** on live Supabase DB with non-superuser role
-  - Two-pool design: `db` (RLS-firing, default for app code) + `adminDb` (bypasses RLS, for sessionless contexts)
-  - All webhook + background-job paths switched to `adminDb` to prevent silent RLS-blocked writes
-  - KAVORA_ORG_ID cleaned up across 20+ files (now `@deprecated`, kept only for seed + tests)
-  - Per-tenant orgId threaded through Twilio `contact-lookup` helpers
+  - All webhook + background-job paths wired to `adminDb` (will work unchanged when RLS re-arms)
+  - Per-table orgId already in place; no schema work needed for reactivation
   - 15/15 vitest tests pass; typecheck + build clean
   - Migrations 0001-0009 applied; runner idempotent
+- **Phase A.5 — Clerk Organizations activation: DEFERRED** — pending 3+ paying clients. See "How to activate multi-tenant when ready" below.
 - **Phase B — Per-tenant resources: NOT STARTED** — pending first paying client
 - **Phase C — Service catalog + billing: NOT STARTED** — pending first paying client
+
+### How to activate multi-tenant when ready
+
+When Kavora signs its 3rd paying client (the threshold where Clerk Pro's $25/mo Organizations add-on pays for itself), flip back to multi-tenant mode:
+
+1. **Upgrade Clerk to Pro**; enable "Organizations" in the Clerk dashboard. Add a `kavora` Organization (id `"kavora"`) and invite the Kavora team as members.
+2. **Restore the deleted files** from git history (commit `8a26ec7` is the last pre-cleanup commit):
+   - `src/app/api/webhooks/clerk/route.ts` — `organization.*` + `organizationMembership.*` event handlers
+   - `src/components/dashboard/sidebar.tsx` + `sidebar-brand.tsx` + `sidebar-empty-org.tsx` (deleted) + `src/components/ui/organization-switcher.tsx` (deleted) — OrganizationSwitcher wiring
+   - `src/lib/org/current-org-id.ts` + `src/lib/org/index.ts` — Clerk-session auth seam (replaces the current single-tenant `KAVORA_ORG_ID` return)
+   - `src/lib/clerk-orgs.ts` (deleted) — Clerk Organizations helpers
+   - `src/lib/auth.ts` — `requireDbUser()` routes through `currentOrgId()` (throws on null)
+   - `tests/components/organization-switcher.test.tsx` (deleted) + `tests/integration/clerk-webhook.test.ts` — render + webhook tests
+3. **Update docs**: `docs/AGENTS.md` Tenancy line → "multi-tenant"; `docs/ARCHITECTURE.md` Roadmap → "Phase A.5 shipped"; `docs/research/ai-agency/README.md` → flip this status block.
+4. **Re-run pgTAP harness**: `bash scripts/test-rls.sh` — should still pass (no policy changes needed; only the dormant policies re-arm via the live Clerk session).
+5. **Smoke test**: sign in as a user with two org memberships, switch orgs via the sidebar switcher, verify list views re-filter (the dashboard hot-leads widget, contacts/companies/deals list pages, analytics tile).
+
+See `phase-a-prompt.md` for the original Phase A specification (every file allowlist, every risk register entry, every acceptance criterion).
 
 ---
 

@@ -13,6 +13,10 @@
  *               Clerk session — Clerk webhooks, Trigger.dev background jobs,
  *               the migration runner. NEVER use this from user-facing code:
  *               it silently bypasses the multi-tenant isolation guarantee.
+ *               (Also defense-in-depth for single-tenant mode: if RLS has a
+ *               bug, adminDb bypasses it for system writes; if app code
+ *               accidentally uses adminDb, the cross-tenant isolation
+ *               guarantee is broken.)
  *
  * Migrations always go through the migration runner script, which uses its
  * own dedicated connection.

@@ -1,5 +1,7 @@
 # Phase A — Multi-Tenant Core: Master Implementation Prompt
 
+> **Status (2026-09-24):** Kavora CRM is currently single-tenant-per-deployment. This prompt documents the multi-tenant Phase A scaffolding that was built but is dormant pending Clerk Pro upgrade. Builders 1-3 of Option B cleanup removed the active UI + webhook handlers + Clerk-session auth seam. The RLS scaffolding + migration files + two-pool design + pgTAP harness are still in place. To re-activate: upgrade to Clerk Pro, flip 'Enable Organizations' in Clerk dashboard, restore the deleted files from git history (commit `8a26ec7` is the last pre-cleanup commit).
+
 > **Self-contained prompt document for Kavora CRM Phase A.** Generated from
 > `tests/phase-a-{spec,builders,reviewers,orchestration}.md` on 2026-09-24.
 > Feed this entire document back to the parent agent (Mavis) when you're
