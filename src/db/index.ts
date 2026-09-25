@@ -74,3 +74,4 @@ if (process.env.NODE_ENV !== "production") {
 export const db = drizzle(pool, { schema, logger: false });
 
 export { schema };
+

@@ -52,13 +52,75 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - name: Install pgTAP
-        run: sudo apt-get update && sudo apt-get install -y postgresql-16-pgtap
-      - name: Apply migrations
+      - name: Install pgTAP + pgvector
+        # Both extensions are referenced by src/db/migrations/*.sql; on stock
+        # postgres:16 they have to come from the apt package set.
+        run: sudo apt-get update && sudo apt-get install -y postgresql-16-pgtap postgresql-16-pgvector
+      - name: Bootstrap Supabase helpers
+        # Stock postgres:16 lacks the Supabase convention of an `extensions`
+        # schema, an `auth` schema, the `auth.jwt()` function, and an
+        # `authenticated` role. 0007_enable_rls.sql assumes all four exist.
+        # The stub for auth.jwt() reads the `request.jwt.claims` GUC that the
+        # pgTAP tests set via set_config().
         env:
           DATABASE_URL: postgresql://postgres:test@localhost:5432/kavora_test
-        run: node scripts/apply-pending-migrations.mjs
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE SCHEMA IF NOT EXISTS extensions;
+          CREATE SCHEMA IF NOT EXISTS auth;
+          CREATE OR REPLACE FUNCTION auth.jwt() RETURNS jsonb
+            LANGUAGE sql STABLE AS $$
+            SELECT nullif(current_setting('request.jwt.claims', true), '')::jsonb
+          $$;
+          DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+              CREATE ROLE authenticated NOLOGIN;
+            END IF;
+          END $$;
+          SQL
+      - name: Apply SQL migrations
+        # scripts/apply-pending-migrations.mjs hardcodes `ssl: { … }` (fails on
+        # the local postgres container because SSL is off) and only handles
+        # 0002-0007 (no 0001, no 0006). On a fresh CI container apply every
+        # SQL file in numeric order via psql instead. The container is
+        # recreated on every PR run, so idempotency for repeated runs is not
+        # required.
+        env:
+          DATABASE_URL: postgresql://postgres:test@localhost:5432/kavora_test
+        run: |
+          for m in src/db/migrations/000[1-7]_*.sql; do
+            echo "[apply] $m"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$m"
+          done
+      - name: Create non-superuser app role
+        # RLS only fires for non-superuser / non-BYPASSRLS roles. If the harness
+        # ran as `postgres` the smoke test would pass spuriously and every RLS
+        # policy would be silently bypassed. Provision a dedicated role with
+        # LOGIN + NOBYPASSRLS so the test suite genuinely exercises RLS. The
+        # default search_path includes the `extensions` schema so the pgTAP
+        # functions resolve without a schema prefix. GRANTs mirror what a
+        # Supabase-provisioned `app_user` would already have.
+        env:
+          DATABASE_URL: postgresql://postgres:test@localhost:5432/kavora_test
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_user') THEN
+              CREATE ROLE app_user LOGIN PASSWORD 'app_user_password'
+                NOSUPERUSER NOBYPASSRLS;
+            END IF;
+          END $$;
+          GRANT USAGE ON SCHEMA extensions, public, auth TO app_user;
+          GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA extensions, auth TO app_user;
+          GRANT SELECT, INSERT, UPDATE, DELETE
+            ON ALL TABLES IN SCHEMA public TO app_user;
+          GRANT USAGE, SELECT, UPDATE
+            ON ALL SEQUENCES IN SCHEMA public TO app_user;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA extensions
+            GRANT EXECUTE ON FUNCTIONS TO app_user;
+          ALTER ROLE app_user SET search_path = extensions, public;
+          SQL
       - name: Run RLS tests
         env:
-          DATABASE_URL_TEST: postgresql://postgres:test@localhost:5432/kavora_test
+          DATABASE_URL_TEST: postgresql://app_user:app_user_password@localhost:5432/kavora_test
         run: bash scripts/test-rls.sh
