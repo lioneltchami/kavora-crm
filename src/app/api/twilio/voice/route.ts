@@ -29,7 +29,6 @@ export async function POST(req: Request) {
     return new NextResponse("Missing required Twilio params", { status: 400 });
   }
 
-  const { contactId, phoneE164 } = await findOrCreateContactByPhone(From, { autoCreate: true });
   const phoneNumberRow = await findPhoneNumberByE164(To);
   // The orgId is the org that owns the Twilio number Twilio hit us for — there is
   // no Clerk session in a webhook. If the lookup missed (To number isn't in
@@ -39,6 +38,10 @@ export async function POST(req: Request) {
     return new NextResponse("Unknown To number", { status: 400 });
   }
   const orgId = phoneNumberRow.orgId;
+  const { contactId, phoneE164 } = await findOrCreateContactByPhone(From, {
+    orgId,
+    autoCreate: true,
+  });
 
   // Insert the call row idempotently, then insert the linked activity row
   // so AI summaries (Phase 3) have a parent to attach to.
@@ -77,7 +80,7 @@ export async function POST(req: Request) {
     });
   }
 
-  const targets = await getInboundRoutingTargets();
+  const targets = await getInboundRoutingTargets({ orgId });
   const twiml = voiceInbound({
     routingTargets: targets,
     recordingStatusCallbackUrl: buildWebhookUrl("/api/twilio/recording"),

@@ -1,13 +1,7 @@
 import "server-only";
 import { and, eq, isNotNull, isNull, desc } from "drizzle-orm";
 import { db } from "@/db";
-import {
-  contacts,
-  contactPhones,
-  phoneNumbers,
-  users,
-  KAVORA_ORG_ID,
-} from "@/db/schema";
+import { contacts, contactPhones, phoneNumbers, users } from "@/db/schema";
 import { toE164 } from "@/lib/phone";
 
 /**
@@ -16,6 +10,11 @@ import { toE164 } from "@/lib/phone";
  * silently invent contacts on inbound SMS without a real lead, so default
  * autoCreate=false).
  *
+ * `orgId` is required: helpers in this file were previously hard-scoped to a
+ * single `KAVORA_ORG_ID`, which silently leaked data into the wrong tenant in
+ * multi-org deployments. Callers must derive `orgId` from the inbound Twilio
+ * `To` number (via `findPhoneNumberByE164`) and thread it through.
+ *
  * After T2-1, a contact can have multiple phones (one row per channel in
  * `contact_phones`). The lookup joins that table so inbound calls to a
  * contact's non-primary phone still match the existing contact instead of
@@ -23,8 +22,9 @@ import { toE164 } from "@/lib/phone";
  */
 export async function findOrCreateContactByPhone(
   rawNumber: string,
-  opts: { autoCreate?: boolean } = {},
+  opts: { orgId: string; autoCreate?: boolean },
 ): Promise<{ contactId: string | null; contactName: string | null; phoneE164: string | null }> {
+  const { orgId } = opts;
   const e164 = toE164(rawNumber);
   if (!e164) return { contactId: null, contactName: null, phoneE164: null };
 
@@ -34,7 +34,7 @@ export async function findOrCreateContactByPhone(
     .innerJoin(contacts, eq(contacts.id, contactPhones.contactId))
     .where(
       and(
-        eq(contacts.orgId, KAVORA_ORG_ID),
+        eq(contacts.orgId, orgId),
         eq(contactPhones.phoneE164, e164),
         isNull(contacts.deletedAt),
       ),
@@ -57,7 +57,7 @@ export async function findOrCreateContactByPhone(
   const inserted = await db
     .insert(contacts)
     .values({
-      orgId: KAVORA_ORG_ID,
+      orgId,
       firstName: "Unknown",
       lastName: null,
       phone: e164,
@@ -74,7 +74,7 @@ export async function findOrCreateContactByPhone(
       .innerJoin(contacts, eq(contacts.id, contactPhones.contactId))
       .where(
         and(
-          eq(contacts.orgId, KAVORA_ORG_ID),
+          eq(contacts.orgId, orgId),
           eq(contactPhones.phoneE164, e164),
           isNull(contacts.deletedAt),
         ),
@@ -95,6 +95,11 @@ export async function findOrCreateContactByPhone(
  * Resolve the local Twilio number that received an inbound event. Twilio
  * always includes the called `To` number; we map it back to our `phone_numbers`
  * table to link calls/sms to the number row.
+ *
+ * Bootstrap lookup — does NOT take `orgId` as input. Twilio numbers are
+ * globally unique across our tenants, so the row uniquely identifies the
+ * owning org (returned via `phoneNumberRow.orgId`). Callers use that to
+ * scope subsequent helpers (`findOrCreateContactByPhone`, etc.).
  */
 export async function findPhoneNumberByE164(rawNumber: string) {
   const e164 = toE164(rawNumber);
@@ -102,7 +107,7 @@ export async function findPhoneNumberByE164(rawNumber: string) {
   const found = await db
     .select()
     .from(phoneNumbers)
-    .where(and(eq(phoneNumbers.orgId, KAVORA_ORG_ID), eq(phoneNumbers.number, e164)))
+    .where(eq(phoneNumbers.number, e164))
     .limit(1);
   return found[0] ?? null;
 }
@@ -112,14 +117,18 @@ export async function findPhoneNumberByE164(rawNumber: string) {
  *
  * For v1: any user with `phoneForRouting` set. Future: round-robin / per-pipeline
  * routing, "press 1 for sales" menus, etc.
+ *
+ * `orgId` is required: callers must derive it from the inbound Twilio `To`
+ * number (see `findPhoneNumberByE164`) and thread it through.
  */
-export async function getInboundRoutingTargets(): Promise<
-  Array<{ number: string; label?: string }>
-> {
+export async function getInboundRoutingTargets(opts: {
+  orgId: string;
+}): Promise<Array<{ number: string; label?: string }>> {
+  const { orgId } = opts;
   const rows = await db
     .select({ phone: users.phoneForRouting, name: users.name, email: users.email })
     .from(users)
-    .where(and(eq(users.orgId, KAVORA_ORG_ID), isNotNull(users.phoneForRouting)));
+    .where(and(eq(users.orgId, orgId), isNotNull(users.phoneForRouting)));
 
   const out: Array<{ number: string; label?: string }> = [];
   for (const r of rows) {

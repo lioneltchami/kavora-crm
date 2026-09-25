@@ -29,10 +29,7 @@ export async function POST(req: Request) {
     return new NextResponse("Missing required Twilio params", { status: 400 });
   }
 
-  const [{ contactId, phoneE164 }, phoneNumberRow] = await Promise.all([
-    findOrCreateContactByPhone(From, { autoCreate: true }),
-    findPhoneNumberByE164(To),
-  ]);
+  const phoneNumberRow = await findPhoneNumberByE164(To);
   // The orgId is the org that owns the Twilio number Twilio hit us for — there is
   // no Clerk session in a webhook. If the lookup missed (To number isn't in
   // phone_numbers), we 400 — accepting an SMS tagged with an unknown org would
@@ -41,6 +38,10 @@ export async function POST(req: Request) {
     return new NextResponse("Unknown To number", { status: 400 });
   }
   const orgId = phoneNumberRow.orgId;
+  const { contactId, phoneE164 } = await findOrCreateContactByPhone(From, {
+    orgId,
+    autoCreate: true,
+  });
 
   const insertedSms = await db
     .insert(smsMessages)
