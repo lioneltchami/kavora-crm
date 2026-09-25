@@ -1,12 +1,14 @@
 import { db } from "@/db";
-import { calls, smsMessages, deals, contacts, KAVORA_ORG_ID } from "@/db/schema";
+import { calls, smsMessages, deals, contacts } from "@/db/schema";
 import { and, eq, gte, isNull, sql } from "drizzle-orm";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { requireDbUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function AnalyticsPage() {
+  const { ctx } = await requireDbUser();
   const since30 = new Date(Date.now() - 30 * 86_400_000);
   const [callsAgg, smsAgg, dealsAgg, contactsAgg] = await Promise.all([
     db
@@ -15,14 +17,14 @@ export default async function AnalyticsPage() {
         duration: sql<number>`COALESCE(SUM(${calls.durationSeconds}), 0)::int`,
       })
       .from(calls)
-      .where(and(eq(calls.orgId, KAVORA_ORG_ID), gte(calls.createdAt, since30))),
+      .where(and(eq(calls.orgId, ctx.orgId), gte(calls.createdAt, since30))),
     db
       .select({
         count: sql<number>`COUNT(*)::int`,
         inbound: sql<number>`SUM(CASE WHEN ${smsMessages.direction} = 'inbound' THEN 1 ELSE 0 END)::int`,
       })
       .from(smsMessages)
-      .where(and(eq(smsMessages.orgId, KAVORA_ORG_ID), gte(smsMessages.createdAt, since30))),
+      .where(and(eq(smsMessages.orgId, ctx.orgId), gte(smsMessages.createdAt, since30))),
     db
       .select({
         open: sql<number>`SUM(CASE WHEN ${deals.status} = 'open' THEN 1 ELSE 0 END)::int`,
@@ -31,11 +33,11 @@ export default async function AnalyticsPage() {
         valueWonCents: sql<number>`COALESCE(SUM(CASE WHEN ${deals.status} = 'won' THEN ${deals.valueCents} ELSE 0 END), 0)::int`,
       })
       .from(deals)
-      .where(eq(deals.orgId, KAVORA_ORG_ID)),
+      .where(eq(deals.orgId, ctx.orgId)),
     db
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(contacts)
-      .where(and(eq(contacts.orgId, KAVORA_ORG_ID), isNull(contacts.deletedAt))),
+      .where(and(eq(contacts.orgId, ctx.orgId), isNull(contacts.deletedAt))),
   ]);
 
   const stats = {

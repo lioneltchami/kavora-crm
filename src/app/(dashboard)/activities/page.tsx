@@ -1,8 +1,9 @@
 import { db } from "@/db";
-import { activities, KAVORA_ORG_ID } from "@/db/schema";
+import { activities } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { formatDistanceToNow } from "@/lib/datetime";
+import { requireDbUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +17,11 @@ const ACTIVITY_TYPES = [
 ] as const;
 
 export default async function ActivityPage() {
+  const { ctx } = await requireDbUser();
   const rows = await db
     .select()
     .from(activities)
-    .where(eq(activities.orgId, KAVORA_ORG_ID))
+    .where(eq(activities.orgId, ctx.orgId))
     .orderBy(desc(activities.occurredAt))
     .limit(200);
 

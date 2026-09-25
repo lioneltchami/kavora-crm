@@ -6,34 +6,34 @@ import {
   calls,
   contacts,
   deals,
-  KAVORA_ORG_ID,
   smsMessages,
   leadScores,
 } from "@/db/schema";
 import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { HotLeads } from "@/components/dashboard/hot-leads";
+import { requireDbUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-async function getStats() {
+async function getStats(orgId: string) {
   const since = new Date(Date.now() - 7 * 86_400_000);
   const [contactsTotal, dealsOpen, callsWeek, smsWeek, hot] = await Promise.all([
     db
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(contacts)
-      .where(and(eq(contacts.orgId, KAVORA_ORG_ID), isNull(contacts.deletedAt))),
+      .where(and(eq(contacts.orgId, orgId), isNull(contacts.deletedAt))),
     db
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(deals)
-      .where(and(eq(deals.orgId, KAVORA_ORG_ID), eq(deals.status, "open"))),
+      .where(and(eq(deals.orgId, orgId), eq(deals.status, "open"))),
     db
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(calls)
-      .where(and(eq(calls.orgId, KAVORA_ORG_ID), gte(calls.createdAt, since))),
+      .where(and(eq(calls.orgId, orgId), gte(calls.createdAt, since))),
     db
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(smsMessages)
-      .where(and(eq(smsMessages.orgId, KAVORA_ORG_ID), gte(smsMessages.createdAt, since))),
+      .where(and(eq(smsMessages.orgId, orgId), gte(smsMessages.createdAt, since))),
     // Hot leads — order DESC, fetch the highest-scoring contacts and join names.
     db
       .select({
@@ -48,8 +48,8 @@ async function getStats() {
       .innerJoin(contacts, eq(contacts.id, leadScores.contactId))
       .where(
         and(
-          eq(leadScores.orgId, KAVORA_ORG_ID),
-          eq(contacts.orgId, KAVORA_ORG_ID),
+          eq(leadScores.orgId, orgId),
+          eq(contacts.orgId, orgId),
           isNull(contacts.deletedAt),
         ),
       )
@@ -66,7 +66,8 @@ async function getStats() {
 }
 
 export default async function DashboardPage() {
-  const stats = await getStats();
+  const { ctx } = await requireDbUser();
+  const stats = await getStats(ctx.orgId);
 
   const tiles = [
     { label: "Contacts", value: stats.contactsTotal, icon: Users, href: "/contacts" },

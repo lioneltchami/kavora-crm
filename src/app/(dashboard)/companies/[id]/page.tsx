@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { db } from "@/db";
-import { companies, contacts, KAVORA_ORG_ID } from "@/db/schema";
+import { companies, contacts } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { requireDbUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -14,10 +15,11 @@ export default async function CompanyDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const { ctx } = await requireDbUser();
   const rows = await db
     .select()
     .from(companies)
-    .where(and(eq(companies.id, id), eq(companies.orgId, KAVORA_ORG_ID)))
+    .where(and(eq(companies.id, id), eq(companies.orgId, ctx.orgId)))
     .limit(1);
   const company = rows[0];
   if (!company) notFound();
@@ -28,7 +30,7 @@ export default async function CompanyDetailPage({
     .where(
       and(
         eq(contacts.companyId, id),
-        eq(contacts.orgId, KAVORA_ORG_ID),
+        eq(contacts.orgId, ctx.orgId),
         isNull(contacts.deletedAt),
       ),
     );
