@@ -1,0 +1,15 @@
+-- Disable RLS on `organizations`.
+--
+-- Builder 3 deliberately excluded this table from the 0007 RLS enablement so
+-- that the Clerk webhook (upsertOrganization / deleteOrganization) and the
+-- seed migration could upsert freely, but during testing RLS was accidentally
+-- enabled on the table in the dev environment via a direct ALTER, and the
+-- resulting schema has zero policies on `organizations` — leaving the
+-- non-superuser app role (DATABASE_APP_ROLE = app_user) silently blocked from
+-- every INSERT/UPDATE/DELETE/SELECT.
+--
+-- This migration formalizes the "no RLS on organizations" decision. Until we
+-- intentionally add policies for SELECT-by-organization (so the org switcher
+-- can list the user's orgs), `organizations` is treated as admin-only-write,
+-- app-read-anything via SECURITY DEFINER RPCs (future work).
+ALTER TABLE organizations DISABLE ROW LEVEL SECURITY;

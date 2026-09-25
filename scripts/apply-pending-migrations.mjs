@@ -43,6 +43,16 @@ const checks = [
     file: "src/db/migrations/0007_enable_rls.sql",
     existsQuery: "SELECT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='contacts' AND policyname='contacts_org_select') AS e",
   },
+  {
+    name: "0008_disable_rls_on_organizations",
+    file: "src/db/migrations/0008_disable_rls_on_organizations.sql",
+    existsQuery: "SELECT relrowsecurity = false AS e FROM pg_class WHERE relname = 'organizations'",
+  },
+  {
+    name: "0009_use_guc_for_current_org_id",
+    file: "src/db/migrations/0009_use_guc_for_current_org_id.sql",
+    existsQuery: "SELECT prosrc LIKE '%request.jwt.claims%' AS e FROM pg_proc WHERE proname = 'current_org_id'",
+  },
 ];
 
 for (const { name, file, existsQuery } of checks) {
