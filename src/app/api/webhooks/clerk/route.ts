@@ -5,8 +5,11 @@ import { db } from "@/db";
 import { users, KAVORA_ORG_ID } from "@/db/schema";
 import { env } from "@/lib/env";
 import {
+  attachMembership,
   deleteOrganization,
+  detachMembership,
   upsertOrganization,
+  type ClerkOrgMembershipPayload,
   type ClerkOrgPayload,
 } from "@/lib/clerk-orgs";
 
@@ -17,7 +20,9 @@ import {
  * Configure in Clerk dashboard:
  *   Endpoint: https://<your-domain>/api/webhooks/clerk
  *   Events: user.created, user.updated, user.deleted,
- *           organization.created, organization.updated, organization.deleted
+ *           organization.created, organization.updated, organization.deleted,
+ *           organizationMembership.created, organizationMembership.updated,
+ *           organizationMembership.deleted
  *   Signing secret → CLERK_WEBHOOK_SECRET env var
  *
  * Organizations must be enabled in the Clerk dashboard (Settings →
@@ -87,6 +92,13 @@ export async function POST(req: Request) {
       case "organization.deleted":
         await deleteOrganization(evt.data);
         break;
+      case "organizationMembership.created":
+      case "organizationMembership.updated":
+        await attachMembership(evt.data);
+        break;
+      case "organizationMembership.deleted":
+        await detachMembership(evt.data);
+        break;
       default:
         break;
     }
@@ -103,7 +115,10 @@ type ClerkWebhookEvent =
   | { type: "user.deleted"; data: { id: string } }
   | { type: "organization.created"; data: ClerkOrgPayload }
   | { type: "organization.updated"; data: ClerkOrgPayload }
-  | { type: "organization.deleted"; data: ClerkOrgPayload };
+  | { type: "organization.deleted"; data: ClerkOrgPayload }
+  | { type: "organizationMembership.created"; data: ClerkOrgMembershipPayload }
+  | { type: "organizationMembership.updated"; data: ClerkOrgMembershipPayload }
+  | { type: "organizationMembership.deleted"; data: ClerkOrgMembershipPayload };
 
 type ClerkUserPayload = {
   id: string;
