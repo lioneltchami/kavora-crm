@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { Webhook } from "svix";
 import { eq } from "drizzle-orm";
-import { db } from "@/db";
+import { adminDb } from "@/db";
 import { users, KAVORA_ORG_ID } from "@/db/schema";
 import { env } from "@/lib/env";
 import {
@@ -27,6 +27,11 @@ import {
  *
  * Organizations must be enabled in the Clerk dashboard (Settings →
  * Organizations → "Enable Organizations") for org events to fire.
+ *
+ * Uses `adminDb` (not `db`) because the webhook has no Clerk session —
+ * RLS would silently block every `users` write otherwise. The Clerk-orgs
+ * helpers internally also use `adminDb` for `users` updates and audit_log
+ * inserts.
  */
 export async function POST(req: Request) {
   const secret = env.CLERK_WEBHOOK_SECRET;
@@ -62,7 +67,7 @@ export async function POST(req: Request) {
       case "user.updated": {
         const u = evt.data;
         const primary = u.email_addresses.find((e) => e.id === u.primary_email_address_id);
-        await db
+        await adminDb
           .insert(users)
           .values({
             id: u.id,
@@ -83,7 +88,7 @@ export async function POST(req: Request) {
         break;
       }
       case "user.deleted":
-        await db.delete(users).where(eq(users.id, evt.data.id!));
+        await adminDb.delete(users).where(eq(users.id, evt.data.id!));
         break;
       case "organization.created":
       case "organization.updated":

@@ -15,7 +15,7 @@
  */
 
 import { eq, and } from "drizzle-orm";
-import { db } from "@/db";
+import { db, adminDb } from "@/db";
 import { organizations, users, KAVORA_ORG_ID } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
 
@@ -36,6 +36,11 @@ export type ClerkOrgMembershipPayload = {
  * Clerk's `id`. The schema's `organizations` table currently exposes `id`,
  * `name`, and `created_at`; we mirror those. When a `slug` column is added in
  * a future migration, extend this insert to include `slug: payload.slug ?? null`.
+ *
+ * Uses `db` because the `organizations` table is intentionally NOT RLS-protected
+ * (see `src/db/migrations/0007_enable_rls.sql` — Builder 3 deliberately excluded
+ * it so seed + webhook can upsert). If we ever enable RLS on `organizations`,
+ * switch this to `adminDb`.
  */
 export async function upsertOrganization(payload: ClerkOrgPayload): Promise<void> {
   const id = payload.id;
@@ -68,6 +73,9 @@ export async function deleteOrganization(payload: { id?: string | null }): Promi
 /**
  * `organizationMembership.created` / `.updated` — point the user's `orgId` at
  * the new organization and audit the join.
+ *
+ * Uses `adminDb` because the webhook has no Clerk session, so RLS would
+ * silently block the `users` write and the `audit_log` insert.
  */
 export async function attachMembership(payload: ClerkOrgMembershipPayload): Promise<void> {
   const userId = payload.public_user_data?.user_id;
@@ -80,7 +88,7 @@ export async function attachMembership(payload: ClerkOrgMembershipPayload): Prom
   if (!orgId) {
     console.warn("[clerk-orgs] attachMembership: missing organization.id, falling back to KAVORA_ORG_ID");
   }
-  await db.update(users).set({ orgId: resolvedOrgId }).where(eq(users.id, userId));
+  await adminDb.update(users).set({ orgId: resolvedOrgId }).where(eq(users.id, userId));
   await logAudit({
     orgId: resolvedOrgId,
     actorUserId: userId,
@@ -94,6 +102,8 @@ export async function attachMembership(payload: ClerkOrgMembershipPayload): Prom
 /**
  * `organizationMembership.deleted` — clear the user's `orgId` only when it
  * matches the org they were removed from, and audit the leave.
+ *
+ * Uses `adminDb` for the same reason as `attachMembership`.
  */
 export async function detachMembership(payload: ClerkOrgMembershipPayload): Promise<void> {
   const userId = payload.public_user_data?.user_id;
@@ -106,7 +116,7 @@ export async function detachMembership(payload: ClerkOrgMembershipPayload): Prom
     console.warn("[clerk-orgs] detachMembership: missing organization.id, skipping");
     return;
   }
-  await db
+  await adminDb
     .update(users)
     .set({ orgId: "" })
     .where(and(eq(users.id, userId), eq(users.orgId, orgId)));
