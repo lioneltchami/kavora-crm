@@ -1,0 +1,55 @@
+-- RLS isolation suite: calls
+-- Verifies that the calls table's *_org_* policies scope SELECT, INSERT,
+-- UPDATE, and DELETE to the JWT's org_id claim. The unique twilio_call_sid
+-- index means a single SID cannot be inserted under two different orgs —
+-- that constraint plus RLS gives us double protection against cross-tenant
+-- row smuggling.
+
+BEGIN;
+SELECT plan(8);
+
+INSERT INTO organizations (id, name)
+  VALUES ('org_kavora_test', 'Kavora Test'),
+         ('org_acme_test',   'Acme Test')
+  ON CONFLICT (id) DO NOTHING;
+
+SELECT set_config('request.jwt.claims', NULL, true);
+SELECT is((SELECT count(*) FROM calls)::int, 0::int,
+  'no JWT → zero calls visible');
+
+SELECT set_config('request.jwt.claims', '{"org_id":"org_kavora_test"}', true);
+INSERT INTO calls (org_id, twilio_call_sid, direction, from_number, to_number)
+  VALUES ('org_kavora_test', 'CA_kavora_001', 'inbound', '+15551110001', '+15552220001'),
+         ('org_acme_test',   'CA_acme_001',   'inbound', '+15551110002', '+15552220002');
+SELECT is((SELECT count(*) FROM calls)::int, 1::int,
+  'kavora JWT → only the kavora call is visible (acme insert rejected by WITH CHECK)');
+
+SELECT set_config('request.jwt.claims', '{"org_id":"org_acme_test"}', true);
+SELECT is((SELECT count(*) FROM calls)::int, 1::int,
+  'acme JWT → only the acme call is visible');
+
+SELECT set_config('request.jwt.claims', '{"org_id":"org_kavora_test"}', true);
+SELECT throws_ok(
+  $$INSERT INTO calls (org_id, twilio_call_sid, direction, from_number, to_number)
+       VALUES ('org_acme_test', 'CA_spoofed_777', 'outbound', '+15551110999', '+15552220999')$$,
+  '42501', NULL,
+  'kavora JWT cannot insert an acme-tagged call (WITH CHECK → 42501)');
+
+SELECT set_config('request.jwt.claims', '{"org_id":"org_acme_test"}', true);
+SELECT results_eq(
+  $$UPDATE calls SET from_number = '+19999999999' WHERE twilio_call_sid = 'CA_kavora_001' RETURNING twilio_call_sid$$,
+  $$VALUES ('CA_kavora_001'::varchar)$$,
+  'cross-tenant UPDATE no-ops (acme cannot mutate kavora calls)');
+
+SELECT lives_ok(
+  $$DELETE FROM calls WHERE twilio_call_sid = 'CA_kavora_001'$$);
+SELECT set_config('request.jwt.claims', '{"org_id":"org_kavora_test"}', true);
+SELECT is((SELECT count(*) FROM calls WHERE twilio_call_sid = 'CA_kavora_001')::int, 1::int,
+  'kavora call still present after a cross-tenant DELETE attempt');
+
+SELECT set_config('request.jwt.claims', NULL, true);
+SELECT is((SELECT count(*) FROM calls)::int, 0::int,
+  'JWT cleared → no calls visible');
+
+SELECT * FROM finish();
+ROLLBACK;
