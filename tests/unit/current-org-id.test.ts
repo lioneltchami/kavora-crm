@@ -22,4 +22,21 @@ describe("currentOrgId()", () => {
     expect(a).toBe(b);
     expect(a).toBe(KAVORA_ORG_ID);
   });
+
+  test("is synchronous and returns a non-empty string", () => {
+    // Phase A had a cache(async (): Promise<string|null>); Option B reverted
+    // it to a sync (): string. Guard against re-introducing an awaitable.
+    const result = currentOrgId();
+    expect(typeof result).toBe("string");
+    expect(result).not.toBe("");
+    // Promise.resolve().then would only apply to a thenable; assert the
+    // returned value is a plain string (no `.then`).
+    expect((result as unknown as { then?: unknown }).then).toBeUndefined();
+  });
+
+  test("returns the literal \"kavora\" (matches organizations.id seed row)", () => {
+    // The DB seed migration `0006_seed_kavora_org.sql` inserts
+    // `organizations(id='kavora')`. The seam and the seed must agree.
+    expect(currentOrgId()).toBe("kavora");
+  });
 });
