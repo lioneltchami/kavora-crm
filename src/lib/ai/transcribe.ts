@@ -1,6 +1,6 @@
 import "server-only";
 import { eq } from "drizzle-orm";
-import { db } from "@/db";
+import { adminDb } from "@/db";
 import { calls } from "@/db/schema";
 import { deepgramConfigured, env } from "@/lib/env";
 
@@ -42,12 +42,12 @@ export async function transcribeCall(opts: {
     return null;
   }
 
-  const callRow = await db.select().from(calls).where(eq(calls.twilioCallSid, opts.callSid)).limit(1);
+  const callRow = await adminDb.select().from(calls).where(eq(calls.twilioCallSid, opts.callSid)).limit(1);
   if (!callRow[0]) return null;
 
   const signedUrl = await getSignedRecordingUrl(opts.recordingPath);
   if (!signedUrl) {
-    await db
+    await adminDb
       .update(calls)
       .set({ transcriptStatus: "failed" })
       .where(eq(calls.twilioCallSid, opts.callSid));
@@ -81,7 +81,7 @@ export async function transcribeCall(opts: {
     };
   } catch (err) {
     console.error("[transcribe] Deepgram error", err);
-    await db
+    await adminDb
       .update(calls)
       .set({ transcriptStatus: "failed" })
       .where(eq(calls.twilioCallSid, opts.callSid));

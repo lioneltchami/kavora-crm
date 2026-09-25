@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { anthropicConfigured, env } from "@/lib/env";
 import { redactPII } from "@/lib/pii";
-import { db } from "@/db";
+import { adminDb } from "@/db";
 import { contacts, leadScores, activities, aiSummaries } from "@/db/schema";
 import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 
@@ -30,7 +30,7 @@ export type ScoreResult = {
 export async function scoreContact(contactId: string): Promise<ScoreResult | null> {
   if (!anthropicConfigured) return null;
 
-  const c = await db
+  const c = await adminDb
     .select()
     .from(contacts)
     .where(
@@ -44,7 +44,7 @@ export async function scoreContact(contactId: string): Promise<ScoreResult | nul
   const contact = c[0];
 
   const since = new Date(Date.now() - 30 * 86_400_000);
-  const recentActivities = await db
+  const recentActivities = await adminDb
     .select()
     .from(activities)
     .where(and(eq(activities.contactId, contactId), gte(activities.occurredAt, since)))
@@ -56,7 +56,7 @@ export async function scoreContact(contactId: string): Promise<ScoreResult | nul
   const recentActivityIds = recentActivities.map((a) => a.id);
   const summaries =
     recentActivityIds.length > 0
-      ? await db
+      ? await adminDb
           .select({
             activityId: aiSummaries.activityId,
             summary: aiSummaries.summary,
@@ -111,7 +111,7 @@ Return strict JSON: {"score": 0-100, "rationale": "<= 30 words"}`;
     }
     const score = Math.round(parsed.data.score);
 
-    await db.insert(leadScores).values({
+    await adminDb.insert(leadScores).values({
       orgId: contact.orgId,
       contactId,
       score,

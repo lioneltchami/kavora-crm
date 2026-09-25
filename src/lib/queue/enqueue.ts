@@ -1,6 +1,6 @@
 import "server-only";
 import { eq } from "drizzle-orm";
-import { db } from "@/db";
+import { adminDb } from "@/db";
 import { smsMessages, calls, activities, aiSummaries } from "@/db/schema";
 import { transcribeCall } from "@/lib/ai/transcribe";
 import { summarizeSms, summarizeCallTranscript } from "@/lib/ai/summarize";
@@ -54,7 +54,7 @@ export async function enqueueInboundSms({ messageSid }: { messageSid: string }):
     "inbound-sms-handler",
     { messageSid },
     async () => {
-      const row = await db
+      const row = await adminDb
         .select()
         .from(smsMessages)
         .where(eq(smsMessages.twilioMessageSid, messageSid))
@@ -94,12 +94,12 @@ export async function enqueueCallTranscription(opts: {
       if (!result) return;
 
       // Persist transcript + flag as completed.
-      await db
+      await adminDb
         .update(calls)
         .set({ transcript: result.transcript, transcriptStatus: "completed" })
         .where(eq(calls.twilioCallSid, opts.callSid));
 
-      const callRow = await db
+      const callRow = await adminDb
         .select({ id: calls.id, contactId: calls.contactId, orgId: calls.orgId })
         .from(calls)
         .where(eq(calls.twilioCallSid, opts.callSid))
@@ -109,14 +109,14 @@ export async function enqueueCallTranscription(opts: {
 
       // Generate structured summary (Haiku) and persist it linked to a call activity row.
       const summary = await summarizeCallTranscript({ transcript: result.transcript });
-      const existingActivity = await db
+      const existingActivity = await adminDb
         .select({ id: activities.id })
         .from(activities)
         .where(eq(activities.refId, call.id))
         .limit(1);
       let activityId = existingActivity[0]?.id;
       if (!activityId) {
-        const inserted = await db
+        const inserted = await adminDb
           .insert(activities)
           .values({
             orgId: call.orgId,
@@ -130,7 +130,7 @@ export async function enqueueCallTranscription(opts: {
         activityId = inserted[0]?.id;
       }
       if (activityId && summary) {
-        await db.insert(aiSummaries).values({
+        await adminDb.insert(aiSummaries).values({
           orgId: call.orgId,
           activityId,
           summary: summary.summary,

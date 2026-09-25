@@ -9,7 +9,7 @@
 
 import { task, schedules } from "@trigger.dev/sdk";
 import { and, eq, gte } from "drizzle-orm";
-import { db } from "@/db";
+import { adminDb } from "@/db";
 import {
   smsMessages,
   calls,
@@ -26,7 +26,7 @@ import { scoreContact } from "@/lib/ai/score-lead";
 export const handleInboundSms = task({
   id: "inbound-sms-handler",
   run: async (payload: { messageSid: string }) => {
-    const row = await db
+    const row = await adminDb
       .select()
       .from(smsMessages)
       .where(eq(smsMessages.twilioMessageSid, payload.messageSid))
@@ -48,19 +48,19 @@ export const handleInboundSms = task({
     // (the inbound webhook should always auto-create one, but the schema
     // allows nullable contactId for race conditions).
     if (sms.contactId) {
-      const existingActivity = await db
+      const existingActivity = await adminDb
         .select({ id: activities.id })
         .from(activities)
         .where(and(eq(activities.contactId, sms.contactId), eq(activities.refId, sms.id)))
         .limit(1);
       let activityId = existingActivity[0]?.id;
       if (activityId) {
-        await db
+        await adminDb
           .update(activities)
           .set({ summary: summary.summary })
           .where(eq(activities.id, activityId));
       } else {
-        const inserted = await db
+        const inserted = await adminDb
           .insert(activities)
           .values({
             orgId: sms.orgId,
@@ -74,7 +74,7 @@ export const handleInboundSms = task({
         activityId = inserted[0]?.id;
       }
       if (activityId) {
-        await db.insert(aiSummaries).values({
+        await adminDb.insert(aiSummaries).values({
           orgId: sms.orgId,
           activityId,
           summary: summary.summary,
@@ -106,12 +106,12 @@ export const transcribeCallTask = task({
     });
     if (!result) return { skipped: "deepgram_not_configured" };
 
-    await db
+    await adminDb
       .update(calls)
       .set({ transcript: result.transcript, transcriptStatus: "completed" })
       .where(eq(calls.twilioCallSid, payload.callSid));
 
-    const callRow = await db
+    const callRow = await adminDb
       .select({ id: calls.id, contactId: calls.contactId, orgId: calls.orgId })
       .from(calls)
       .where(eq(calls.twilioCallSid, payload.callSid))
@@ -120,14 +120,14 @@ export const transcribeCallTask = task({
     if (!call) return { ok: true };
 
     const summary = await summarizeCallTranscript({ transcript: result.transcript });
-    const existingActivity = await db
+    const existingActivity = await adminDb
       .select({ id: activities.id })
       .from(activities)
       .where(eq(activities.refId, call.id))
       .limit(1);
     let activityId = existingActivity[0]?.id;
     if (!activityId) {
-      const inserted = await db
+      const inserted = await adminDb
         .insert(activities)
         .values({
           orgId: call.orgId,
@@ -142,7 +142,7 @@ export const transcribeCallTask = task({
     }
     if (activityId && summary) {
       const { aiSummaries } = await import("@/db/schema");
-      await db.insert(aiSummaries).values({
+      await adminDb.insert(aiSummaries).values({
         orgId: call.orgId,
         activityId,
         summary: summary.summary,
@@ -177,7 +177,7 @@ export const scoreAllLeadsSchedule = schedules.task({
   cron: "0 6 * * 0", // weekly Sunday 6am UTC
   run: async () => {
     const since = new Date(Date.now() - 30 * 86_400_000);
-    const recentContactIds = await db
+    const recentContactIds = await adminDb
       .selectDistinct({ contactId: activities.contactId })
       .from(activities)
       .where(and(gte(activities.occurredAt, since)))
