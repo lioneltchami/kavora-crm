@@ -7,7 +7,6 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
 } from "@/components/ui/sidebar";
-import { SidebarEmptyOrg } from "@/components/dashboard/sidebar-empty-org";
 
 interface SidebarBrandProps {
   workspaceName?: string;
@@ -39,7 +38,6 @@ export function SidebarBrand({ workspaceName }: SidebarBrandProps = {}) {
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
-      <SidebarEmptyOrg />
     </SidebarHeader>
   );
 }
