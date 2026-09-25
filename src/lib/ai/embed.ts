@@ -93,10 +93,10 @@ export async function embedActivity(opts: {
     return null;
   }
 
-  const { pool } = await import("@/db");
+  const { adminPool } = await import("@/db");
   // Idempotency: wipe existing chunks for this (org, source) before re-insert.
   // Without this, retries would double the RAG index.
-  await pool.query(
+  await adminPool.query(
     `DELETE FROM embeddings WHERE org_id = $1 AND source_type = $2 AND source_id = $3`,
     [opts.orgId, opts.sourceType, opts.sourceId],
   );
@@ -106,7 +106,7 @@ export async function embedActivity(opts: {
     const chunk = chunks[i]!;
     const vec = vectors[i]!;
     const vecLiteral = `[${vec.join(",")}]`;
-    const result = await pool.query<{ id: string }>(
+    const result = await adminPool.query<{ id: string }>(
       `INSERT INTO embeddings (org_id, source_type, source_id, chunk_index, content, embedding)
        VALUES ($1, $2, $3, $4, $5, $6::vector)
        RETURNING id`,
@@ -132,8 +132,8 @@ export async function retrieveSimilar(opts: {
   const [vec] = p === "voyage" ? await embedWithVoyage([opts.query]) : await embedWithOpenAI([opts.query]);
   const vecLiteral = `[${vec!.join(",")}]`;
 
-  const { pool } = await import("@/db");
-  const result = await pool.query<{
+  const { adminPool } = await import("@/db");
+  const result = await adminPool.query<{
     id: string;
     source_type: string;
     source_id: string;

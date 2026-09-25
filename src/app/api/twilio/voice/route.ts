@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
-import { db } from "@/db";
+import { adminDb } from "@/db";
 import { calls, activities } from "@/db/schema";
 import { buildWebhookUrl } from "@/lib/twilio/client";
 import { verifyTwilioWebhook } from "@/lib/twilio/signature";
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
 
   // Insert the call row idempotently, then insert the linked activity row
   // so AI summaries (Phase 3) have a parent to attach to.
-  const insertedCalls = await db
+  const insertedCalls = await adminDb
     .insert(calls)
     .values({
       orgId,
@@ -62,7 +62,7 @@ export async function POST(req: Request) {
     .returning({ id: calls.id });
   let callId = insertedCalls[0]?.id;
   if (!callId) {
-    const existing = await db
+    const existing = await adminDb
       .select({ id: calls.id })
       .from(calls)
       .where(and(eq(calls.twilioCallSid, CallSid), eq(calls.orgId, orgId)))
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
     callId = existing[0]?.id;
   }
   if (callId) {
-    await db.insert(activities).values({
+    await adminDb.insert(activities).values({
       orgId,
       type: "call",
       contactId,

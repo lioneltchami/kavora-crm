@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
-import { db } from "@/db";
+import { adminDb } from "@/db";
 import { smsMessages, activities } from "@/db/schema";
 import { buildWebhookUrl } from "@/lib/twilio/client";
 import { verifyTwilioWebhook } from "@/lib/twilio/signature";
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     autoCreate: true,
   });
 
-  const insertedSms = await db
+  const insertedSms = await adminDb
     .insert(smsMessages)
     .values({
       orgId,
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
     .returning({ id: smsMessages.id });
   let smsId = insertedSms[0]?.id;
   if (!smsId) {
-    const existing = await db
+    const existing = await adminDb
       .select({ id: smsMessages.id })
       .from(smsMessages)
       .where(and(eq(smsMessages.twilioMessageSid, MessageSid), eq(smsMessages.orgId, orgId)))
@@ -69,13 +69,13 @@ export async function POST(req: Request) {
     smsId = existing[0]?.id;
   }
   if (smsId && contactId) {
-    const existingActivity = await db
+    const existingActivity = await adminDb
       .select({ id: activities.id })
       .from(activities)
       .where(and(eq(activities.refId, smsId), eq(activities.type, "sms")))
       .limit(1);
     if (!existingActivity[0]) {
-      await db.insert(activities).values({
+      await adminDb.insert(activities).values({
         orgId,
         type: "sms",
         contactId,

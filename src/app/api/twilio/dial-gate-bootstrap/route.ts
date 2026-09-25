@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { and, eq, isNull } from "drizzle-orm";
-import { db } from "@/db";
+import { adminDb } from "@/db";
 import { calls, contacts, KAVORA_ORG_ID } from "@/db/schema";
 import { buildWebhookUrl } from "@/lib/twilio/client";
 import { verifyTwilioWebhook } from "@/lib/twilio/signature";
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
   // use their `users.orgId` (the agent must exist in our DB before a
   // outbound call is placed, which is the precondition this bootstrap
   // depends on anyway).
-  await db
+  await adminDb
     .insert(calls)
     .values({
       orgId: KAVORA_ORG_ID,
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
 }
 
 async function resolveCustomerFromRecentCall(callSid: string): Promise<string | null> {
-  const callRow = await db
+  const callRow = await adminDb
     .select({ contactId: calls.contactId })
     .from(calls)
     .where(eq(calls.twilioCallSid, callSid))
@@ -75,7 +75,7 @@ async function resolveCustomerFromRecentCall(callSid: string): Promise<string | 
   const contactId = callRow[0]?.contactId;
   if (!contactId) return null;
 
-  const c = await db
+  const c = await adminDb
     .select({ phone: contacts.phone })
     .from(contacts)
     .where(and(eq(contacts.id, contactId), isNull(contacts.deletedAt)))

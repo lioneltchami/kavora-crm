@@ -1,6 +1,6 @@
 import "server-only";
 import { and, eq, isNotNull, isNull, desc } from "drizzle-orm";
-import { db } from "@/db";
+import { adminDb } from "@/db";
 import { contacts, contactPhones, phoneNumbers, users } from "@/db/schema";
 import { toE164 } from "@/lib/phone";
 
@@ -28,7 +28,7 @@ export async function findOrCreateContactByPhone(
   const e164 = toE164(rawNumber);
   if (!e164) return { contactId: null, contactName: null, phoneE164: null };
 
-  const found = await db
+  const found = await adminDb
     .select({ id: contacts.id, firstName: contacts.firstName, lastName: contacts.lastName })
     .from(contactPhones)
     .innerJoin(contacts, eq(contacts.id, contactPhones.contactId))
@@ -54,7 +54,7 @@ export async function findOrCreateContactByPhone(
     return { contactId: null, contactName: null, phoneE164: e164 };
   }
 
-  const inserted = await db
+  const inserted = await adminDb
     .insert(contacts)
     .values({
       orgId,
@@ -68,7 +68,7 @@ export async function findOrCreateContactByPhone(
     .returning();
   let created = inserted[0];
   if (!created) {
-    const existing = await db
+    const existing = await adminDb
       .select()
       .from(contactPhones)
       .innerJoin(contacts, eq(contacts.id, contactPhones.contactId))
@@ -104,7 +104,7 @@ export async function findOrCreateContactByPhone(
 export async function findPhoneNumberByE164(rawNumber: string) {
   const e164 = toE164(rawNumber);
   if (!e164) return null;
-  const found = await db
+  const found = await adminDb
     .select()
     .from(phoneNumbers)
     .where(eq(phoneNumbers.number, e164))
@@ -125,7 +125,7 @@ export async function getInboundRoutingTargets(opts: {
   orgId: string;
 }): Promise<Array<{ number: string; label?: string }>> {
   const { orgId } = opts;
-  const rows = await db
+  const rows = await adminDb
     .select({ phone: users.phoneForRouting, name: users.name, email: users.email })
     .from(users)
     .where(and(eq(users.orgId, orgId), isNotNull(users.phoneForRouting)));

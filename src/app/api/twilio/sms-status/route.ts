@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import { db } from "@/db";
+import { adminDb } from "@/db";
 import { smsMessages, type SmsMessage } from "@/db/schema";
 import { verifyTwilioWebhook } from "@/lib/twilio/signature";
 import { readTwilioParams } from "@/lib/twilio/webhook-params";
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     patch.errorMessage = ErrorMessage ?? null;
   }
 
-  await db.update(smsMessages).set(patch).where(eq(smsMessages.twilioMessageSid, MessageSid));
+  await adminDb.update(smsMessages).set(patch).where(eq(smsMessages.twilioMessageSid, MessageSid));
 
   return NextResponse.json({ ok: true });
 }

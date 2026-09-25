@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import { db } from "@/db";
+import { adminDb } from "@/db";
 import { calls } from "@/db/schema";
 import { verifyTwilioWebhook } from "@/lib/twilio/signature";
 import { downloadRecordingToStorage } from "@/lib/twilio/storage";
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       recordingSid: RecordingSid ?? `unknown-${Date.now()}`,
     });
 
-    await db
+    await adminDb
       .update(calls)
       .set({ recordingUrl: RecordingUrl, recordingPath: path })
       .where(eq(calls.twilioCallSid, CallSid));
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     await enqueueCallTranscription({ callSid: CallSid, recordingPath: path });
   } catch (err) {
     console.error("[recording] failed to download/store", err);
-    await db
+    await adminDb
       .update(calls)
       .set({ transcriptStatus: "failed" })
       .where(eq(calls.twilioCallSid, CallSid));

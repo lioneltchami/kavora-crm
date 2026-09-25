@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
-import { db } from "@/db";
+import { adminDb } from "@/db";
 import { calls } from "@/db/schema";
 import { signedRecordingUrl } from "@/lib/twilio/storage";
 import { requireDbUser } from "@/lib/auth";
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
   const callId = url.searchParams.get("callId");
   if (!callId) return new NextResponse("Missing callId", { status: 400 });
 
-  const rows = await db
+  const rows = await adminDb
     .select()
     .from(calls)
     .where(and(eq(calls.id, callId), eq(calls.orgId, ctx.ctx.orgId)))

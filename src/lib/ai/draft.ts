@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { anthropicConfigured, env } from "@/lib/env";
 import { retrieveSimilar } from "./embed";
 import { redactPII } from "@/lib/pii";
-import { db } from "@/db";
+import { adminDb } from "@/db";
 import { aiDrafts, aiStyles } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
@@ -44,7 +44,7 @@ export async function draftOutreach(opts: {
 }): Promise<MultiDraftResult | null> {
   if (!anthropicConfigured) return null;
 
-  const styles = await db
+  const styles = await adminDb
     .select()
     .from(aiStyles)
     .where(eq(aiStyles.userId, opts.authorUserId))
@@ -105,7 +105,7 @@ export async function draftOutreach(opts: {
   }
 
   // Persist the first candidate for audit trail + future "use draft" flow.
-  await db.insert(aiDrafts).values({
+  await adminDb.insert(aiDrafts).values({
     orgId: opts.orgId,
     contactId: opts.contactId,
     authorUserId: opts.authorUserId,

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import { db } from "@/db";
+import { adminDb } from "@/db";
 import { calls, type Call } from "@/db/schema";
 import { verifyTwilioWebhook } from "@/lib/twilio/signature";
 import { readTwilioParams } from "@/lib/twilio/webhook-params";
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   };
   const newStatus: Call["status"] = statusMap[CallStatus ?? ""] ?? "queued";
 
-  await db
+  await adminDb
     .update(calls)
     .set({
       status: newStatus,
