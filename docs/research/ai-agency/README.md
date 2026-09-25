@@ -61,6 +61,23 @@
 
 ---
 
+## Status
+
+- **Phase A — Multi-tenant core: SHIPPED 2026-09-24** (commit `62fb045`)
+  - 18 org-scoped tables have RLS enabled with full SELECT/INSERT/UPDATE/DELETE policies
+  - Clerk Organizations wired (webhook handles `organization.*` + `organizationMembership.*` events)
+  - pgTAP isolation harness: **32/32 tests pass** on live Supabase DB with non-superuser role
+  - Two-pool design: `db` (RLS-firing, default for app code) + `adminDb` (bypasses RLS, for sessionless contexts)
+  - All webhook + background-job paths switched to `adminDb` to prevent silent RLS-blocked writes
+  - KAVORA_ORG_ID cleaned up across 20+ files (now `@deprecated`, kept only for seed + tests)
+  - Per-tenant orgId threaded through Twilio `contact-lookup` helpers
+  - 15/15 vitest tests pass; typecheck + build clean
+  - Migrations 0001-0009 applied; runner idempotent
+- **Phase B — Per-tenant resources: NOT STARTED** — pending first paying client
+- **Phase C — Service catalog + billing: NOT STARTED** — pending first paying client
+
+---
+
 ## Cross-references
 
 - [`../atomic-crm/apply-to-kavora.md`](../atomic-crm/apply-to-kavora.md) — Tier 1-3 roadmap for atomic-CRM-derived features (ships alongside agency pivot, not in place of it)

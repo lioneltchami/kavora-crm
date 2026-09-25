@@ -221,16 +221,16 @@ Reusable `BottomSheet` wrapper in `src/components/ui/bottom-sheet.tsx` — `Shee
 
 ## Roadmap
 
-Tier 1 (T1-1 sidebar shell, T1-2 `merge_contacts`, T1-3 Sonner `undoable` soft-delete) shipped as v1.5. The first four Tier-2 items — DB summary views (T2-2), List/ListContent mobile split (T2-3), multi-value contact channels (T2-1), bottom-sheet create/edit dialogs (T2-4) — plus the multi-value form UI in new-contact + edit-contact sheets and the `merge_contacts` channel reconciliation — shipped as v1.7 → v1.8. The Tier 2/3 plan from the atomic-crm research is the source of truth for what's next:
+Tier 1 (T1-1 sidebar shell, T1-2 `merge_contacts`, T1-3 Sonner `undoable` soft-delete) shipped as v1.5. The first four Tier-2 items — DB summary views (T2-2), List/ListContent mobile split (T2-3), multi-value contact channels (T2-1), bottom-sheet create/edit dialogs (T2-4) — plus the multi-value form UI in new-contact + edit-contact sheets and the `merge_contacts` channel reconciliation — shipped as v1.7 → v1.8. **Phase A (multi-tenant core) shipped 2026-09-24**: Clerk Organizations + RLS on 18 org-scoped tables + pgTAP isolation harness + non-superuser app pool + `adminDb` for sessionless contexts. 32/32 pgTAP isolation tests pass against live Supabase DB; 15/15 vitest tests pass; typecheck + build clean. The Tier 2/3 plan from the atomic-crm research and the agency-platform pivot are the source of truth for what's next:
 
 → **[docs/research/atomic-crm/apply-to-kavora.md](./research/atomic-crm/apply-to-kavora.md)** — full Tier 1 / Tier 2 / Tier 3 breakdown with scores, effort estimates, dependencies, and the recommended 8-week schedule.
+→ **[docs/research/ai-agency/README.md](./research/ai-agency/README.md)** — agency-platform pivot (Phase A is the foundation; Phase B adds per-tenant Twilio subaccounts, Phase C adds service catalog + billing).
 
 Backlog (not on the v2 path):
 
 - Email integration (Gmail/MS Graph OAuth, SendGrid send)
 - WhatsApp via Twilio Conversations
 - Browser-based softphone (Twilio Voice JS SDK)
-- Multi-tenant org switcher
 - Custom fields on contacts/deals
 - Webhooks out (Zapier-style automations)
 - Mobile app (React Native + the same Twilio backend)
