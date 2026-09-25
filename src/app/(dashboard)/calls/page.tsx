@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { db } from "@/db";
-import { calls, contacts, KAVORA_ORG_ID } from "@/db/schema";
+import { calls, contacts } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Badge } from "@/components/ui/badge";
 import { formatPhoneForDisplay } from "@/lib/phone";
 import { RecordingPlayer } from "@/components/calls/recording-player";
+import { requireDbUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ function formatDuration(seconds: number): string {
 }
 
 export default async function CallsPage() {
+  const { ctx } = await requireDbUser();
   const rows = await db
     .select({
       id: calls.id,
@@ -38,7 +40,7 @@ export default async function CallsPage() {
     })
     .from(calls)
     .leftJoin(contacts, eq(contacts.id, calls.contactId))
-    .where(eq(calls.orgId, KAVORA_ORG_ID))
+    .where(eq(calls.orgId, ctx.orgId))
     .orderBy(desc(calls.createdAt))
     .limit(100);
 

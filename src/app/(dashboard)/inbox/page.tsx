@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { smsMessages, contacts, KAVORA_ORG_ID } from "@/db/schema";
+import { smsMessages, contacts } from "@/db/schema";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { formatPhoneForDisplay } from "@/lib/phone";
 import { SmsComposer } from "@/components/inbox/sms-composer";
+import { requireDbUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ export const dynamic = "force-dynamic";
  * Click a thread to expand the full conversation and reply.
  */
 export default async function InboxPage() {
+  const { ctx } = await requireDbUser();
   // Latest message per contact + total count per thread. Window-function
   // approach because GROUP BY can't carry body/createdAt without grouping by
   // them too (which would lose the "latest" semantics).
@@ -31,7 +33,7 @@ export default async function InboxPage() {
       })
       .from(smsMessages)
       .leftJoin(contacts, eq(contacts.id, smsMessages.contactId))
-      .where(and(eq(smsMessages.orgId, KAVORA_ORG_ID), isNull(contacts.deletedAt))),
+      .where(and(eq(smsMessages.orgId, ctx.orgId), isNull(contacts.deletedAt))),
   );
 
   const threads = await db
@@ -67,7 +69,7 @@ export default async function InboxPage() {
         .where(
           and(
             inArray(smsMessages.contactId, contactIds),
-            eq(smsMessages.orgId, KAVORA_ORG_ID),
+            eq(smsMessages.orgId, ctx.orgId),
           ),
         )
         .orderBy(desc(smsMessages.createdAt))

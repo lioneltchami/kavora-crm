@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { users, KAVORA_ORG_ID } from "@/db/schema";
+import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,8 +10,8 @@ import { requireDbUser } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 export default async function TeamSettingsPage() {
-  const { dbRow } = await requireDbUser();
-  const team = await db.select().from(users).where(eq(users.orgId, KAVORA_ORG_ID));
+  const { ctx, dbRow } = await requireDbUser();
+  const team = await db.select().from(users).where(eq(users.orgId, ctx.orgId));
 
   return (
     <div className="space-y-6">

@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { phoneNumbers, KAVORA_ORG_ID } from "@/db/schema";
+import { phoneNumbers } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,14 +8,16 @@ import { formatPhoneForDisplay } from "@/lib/phone";
 import { PhoneNumberActions } from "@/components/settings/phone-number-actions";
 import { twilioConfigured } from "@/lib/env";
 import Link from "next/link";
+import { requireDbUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function PhoneNumbersPage() {
+  const { ctx } = await requireDbUser();
   const rows = await db
     .select()
     .from(phoneNumbers)
-    .where(eq(phoneNumbers.orgId, KAVORA_ORG_ID))
+    .where(eq(phoneNumbers.orgId, ctx.orgId))
     .orderBy(desc(phoneNumbers.createdAt));
 
   return (
