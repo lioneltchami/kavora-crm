@@ -35,7 +35,10 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        # Custom image with pgvector + pgTAP pre-installed. Built from
+        # Dockerfile.pg-test and pushed to ghcr.io by the
+        # `publish-pg-test-image` workflow.
+        image: ghcr.io/lioneltchami/kavora-pg-test:latest
         env:
           POSTGRES_PASSWORD: test
           POSTGRES_DB: kavora_test
@@ -52,10 +55,6 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - name: Install pgTAP + pgvector
-        # Both extensions are referenced by src/db/migrations/*.sql; on stock
-        # postgres:16 they have to come from the apt package set.
-        run: sudo apt-get update && sudo apt-get install -y postgresql-16-pgtap postgresql-16-pgvector
       - name: Bootstrap Supabase helpers
         # Stock postgres:16 lacks the Supabase convention of an `extensions`
         # schema, an `auth` schema, the `auth.jwt()` function, and an

@@ -1,0 +1,14 @@
+# Test database image for CI: pgvector + pgTAP pre-installed.
+#
+# Stock postgres:16 lacks pgvector; installing it on the GH Actions runner
+# doesn't help because the runner and the service container have separate
+# filesystems. Same problem for pgTAP — the migration 0007_enable_rls.sql
+# and the tests/rls/*.pgTAP.sql test files both need it inside the
+# Postgres process itself.
+#
+# Build + push: see .github/workflows/publish-pg-test-image.yml.
+FROM pgvector/pgvector:pg16
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-16-pgtap \
+    && rm -rf /var/lib/apt/lists/*
