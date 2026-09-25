@@ -69,12 +69,14 @@ type RawMergeSummary = {
  * `merge_contacts(winner_id, loser_id, p_org_id)` defined in
  * src/db/migrations/0002_merge_contacts.sql.
  *
- * Always redirects to the winner's detail page on success.
+ * Returns the merge result so the caller (typically the dialog) can decide
+ * how to navigate + surface feedback to the user. Does NOT redirect; that
+ * decision is the caller's responsibility.
  */
 export async function mergeContact(input: {
   winnerId: string;
   loserId: string;
-}): Promise<void> {
+}): Promise<MergeContactResult> {
   const { ctx } = await requireDbUser();
   const { winnerId, loserId } = mergeInputSchema.parse(input);
 
@@ -121,7 +123,7 @@ export async function mergeContact(input: {
 
   revalidatePath("/contacts");
   revalidatePath(`/contacts/${winnerId}`);
-  redirect(`/contacts/${winnerId}`);
+  return result;
 }
 
 // ─── Pre-merge validation (UI confirm-step helper) ─────────────────────────────

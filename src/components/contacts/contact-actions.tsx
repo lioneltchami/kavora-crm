@@ -115,7 +115,6 @@ export function ContactActions({
           email: email ?? null,
         }}
         onMerged={() => {
-          toast.success("Contacts merged");
           router.push(`/contacts/${contactId}`);
         }}
       />

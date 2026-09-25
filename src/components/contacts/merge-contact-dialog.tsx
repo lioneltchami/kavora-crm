@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { unstable_rethrow } from "next/navigation";
 import { GitMerge, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -86,23 +85,16 @@ export function MergeContactDialog({
     if (!pickedLoser) return;
     setSubmitting(true);
     try {
-      // mergeContact currently returns void and redirects server-side; the cast
-      // keeps us forward-compatible if/when it starts returning
-      // MergeContactResult instead of navigating.
-      const result = (await mergeContact({
+      const result = await mergeContact({
         winnerId: winner.id,
         loserId: pickedLoser.id,
-      })) as unknown as MergeContactResult | undefined;
-      const copiedEmails = result?.copiedEmails ?? 0;
-      const copiedPhones = result?.copiedPhones ?? 0;
+      });
       toast.success(
-        `Merged. Copied ${copiedEmails} email(s) and ${copiedPhones} phone(s).`,
+        `Merged. Copied ${result.copiedEmails} email(s) and ${result.copiedPhones} phone(s).`,
       );
-      onMerged?.({ copiedEmails, copiedPhones });
+      onMerged?.({ copiedEmails: result.copiedEmails, copiedPhones: result.copiedPhones });
       onOpenChange(false);
     } catch (err) {
-      // Let Next.js handle redirects, not-found, etc. without an error toast.
-      unstable_rethrow(err);
       toast.error(err instanceof Error ? err.message : "Could not merge contacts");
       setSubmitting(false);
     }
