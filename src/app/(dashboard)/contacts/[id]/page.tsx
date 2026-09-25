@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   contacts,
@@ -12,6 +12,8 @@ import {
   contactPhones,
   aiDrafts,
   deals,
+  auditLog,
+  users,
   KAVORA_ORG_ID,
 } from "@/db/schema";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -24,6 +26,7 @@ import { SmsComposer } from "@/components/inbox/sms-composer";
 import { NoteComposer } from "@/components/contacts/note-composer";
 import { Timeline } from "@/components/contacts/timeline";
 import { DraftOutreachButton } from "@/components/contacts/draft-outreach-button";
+import { MergeHistoryBadge } from "@/components/contacts/merge-history";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +54,29 @@ export default async function ContactDetailPage({
     .limit(1);
   const contact = contactRows[0];
   if (!contact) notFound();
+
+  // Most recent merge where this contact was the winner (audit log records the
+  // loser as `entity_id`, so we look up via the `meta->>'winnerId'` JSONB key).
+  const lastMergeRows = await db
+    .select({
+      createdAt: auditLog.createdAt,
+      actorName: users.name,
+      meta: auditLog.meta,
+    })
+    .from(auditLog)
+    .leftJoin(users, eq(users.id, auditLog.actorUserId))
+    .where(
+      and(
+        eq(auditLog.action, "contact.merged"),
+        sql`${auditLog.meta}->>'winnerId' = ${id}`,
+      ),
+    )
+    .orderBy(desc(auditLog.createdAt))
+    .limit(1);
+  const lastMerge = lastMergeRows[0];
+  const mergeMeta = (lastMerge?.meta ?? {}) as Record<string, unknown>;
+  const numFromMeta = (key: string): number =>
+    typeof mergeMeta[key] === "number" ? (mergeMeta[key] as number) : 0;
 
   const [emails, phones] = await Promise.all([
     db
@@ -133,6 +159,16 @@ export default async function ContactDetailPage({
           />
         }
       />
+
+      {lastMerge && (
+        <MergeHistoryBadge
+          mergedAt={lastMerge.createdAt}
+          copiedEmails={numFromMeta("copiedEmails")}
+          copiedPhones={numFromMeta("copiedPhones")}
+          copiedTags={numFromMeta("copiedTags")}
+          actorName={lastMerge.actorName}
+        />
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
