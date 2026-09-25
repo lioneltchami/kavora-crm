@@ -16,6 +16,7 @@ import {
 import { contactsSummaryView, type ContactSummary } from "@/db/views";
 import { requireDbUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
+import { withLifecycleCallbacks } from "@/lib/lifecycle";
 import { toE164 } from "@/lib/phone";
 
 const contactChannelEnum = z.enum(["work", "home", "other"]);
@@ -435,21 +436,23 @@ export async function deleteContact(id: string) {
  */
 export async function softDeleteContact(id: string) {
   const { ctx } = await requireDbUser();
-  const affected = await db
-    .update(contacts)
-    .set({ deletedAt: new Date() })
-    .where(and(eq(contacts.id, id), eq(contacts.orgId, ctx.orgId)))
-    .returning({ id: contacts.id });
-  if (affected.length === 0) return;
-  await logAudit({
-    orgId: ctx.orgId,
-    actorUserId: ctx.userId,
-    action: "contact.soft_deleted",
-    entity: "contact",
-    entityId: id,
-  });
-  revalidatePath("/contacts");
-  revalidatePath(`/contacts/${id}`);
+  return withLifecycleCallbacks(
+    {
+      ctx,
+      action: "contact.soft_deleted",
+      entity: "contact",
+      entityId: id,
+      revalidate: ["/contacts", `/contacts/${id}`],
+    },
+    async (innerCtx) => {
+      const affected = await db
+        .update(contacts)
+        .set({ deletedAt: new Date() })
+        .where(and(eq(contacts.id, id), eq(contacts.orgId, innerCtx.orgId)))
+        .returning({ id: contacts.id });
+      return affected.length === 0 ? undefined : affected;
+    },
+  );
 }
 
 /**
