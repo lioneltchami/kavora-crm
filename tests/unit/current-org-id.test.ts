@@ -1,7 +1,11 @@
+/**
+ * Unit tests for the org-resolution seam.
+ *
+ * Mocks `server-only` (it throws outside Next's RSC bundler), `@clerk/nextjs/server`,
+ * and `@/db` so no real network or DB is hit.
+ */
 import { vi, describe, test, expect, beforeEach } from "vitest";
 
-// `server-only` throws when loaded outside Next's RSC bundler. Neutralize it
-// for the test runtime — it has no behavior to assert against.
 vi.mock("server-only", () => ({}));
 
 vi.mock("@clerk/nextjs/server", () => ({
@@ -64,6 +68,26 @@ describe("currentOrgId()", () => {
     mockAuth.mockResolvedValue({ orgId: null } as never);
     const { currentOrgId } = await import("@/lib/org");
     expect(await currentOrgId()).toBeNull();
+  });
+});
+
+describe("requireOrgId()", () => {
+  test("returns the Clerk org_id when the session has one", async () => {
+    mockAuth.mockResolvedValue({ orgId: "org_2xabc123" } as never);
+    const { requireOrgId } = await import("@/lib/org");
+    expect(await requireOrgId()).toBe("org_2xabc123");
+  });
+
+  test("throws NO_ACTIVE_ORG when the session has no org", async () => {
+    mockAuth.mockResolvedValue({ orgId: null } as never);
+    const { requireOrgId } = await import("@/lib/org");
+    await expect(requireOrgId()).rejects.toThrow("NO_ACTIVE_ORG");
+  });
+
+  test("throws NO_ACTIVE_ORG when there is no Clerk session", async () => {
+    mockAuth.mockResolvedValue({} as never);
+    const { requireOrgId } = await import("@/lib/org");
+    await expect(requireOrgId()).rejects.toThrow("NO_ACTIVE_ORG");
   });
 });
 
