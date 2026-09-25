@@ -29,7 +29,7 @@ const dbStub: DbStub = {
   delete: vi.fn(),
 };
 
-vi.mock("@/db", () => ({ db: dbStub }));
+vi.mock("@/db", () => ({ db: dbStub, adminDb: dbStub }));
 vi.mock("@/db/schema", () => ({
   users: { id: "id" },
   KAVORA_ORG_ID: "kavora",
@@ -107,5 +107,120 @@ describe("POST /api/webhooks/clerk — signature verification", () => {
       ) as never,
     );
     expect(res.status).toBe(401);
+  });
+});
+
+const userFixture = (overrides: Partial<{
+  id: string;
+  email_addresses: Array<{ id: string; email_address: string }>;
+  primary_email_address_id: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  image_url: string | null;
+}> = {}) => ({
+  id: overrides.id ?? "user_test_abc",
+  email_addresses: overrides.email_addresses ?? [
+    { id: "email_primary", email_address: "ada@example.com" },
+    { id: "email_other", email_address: "ada+other@example.com" },
+  ],
+  primary_email_address_id:
+    "primary_email_address_id" in overrides
+      ? overrides.primary_email_address_id
+      : "email_primary",
+  first_name:
+    "first_name" in overrides ? overrides.first_name : "Ada",
+  last_name:
+    "last_name" in overrides ? overrides.last_name : "Lovelace",
+  image_url:
+    "image_url" in overrides ? overrides.image_url : "https://example.com/ada.png",
+});
+
+describe("POST /api/webhooks/clerk — user lifecycle", () => {
+  it("upserts the user on user.created with primary email, full name, and image", async () => {
+    const res = await POST(
+      buildRequest({ type: "user.created", data: userFixture() }) as never,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(insertChain.values).toHaveBeenCalledTimes(1);
+    const inserted = insertChain.values.mock.calls[0]?.[0];
+    expect(inserted).toMatchObject({
+      id: "user_test_abc",
+      orgId: "kavora",
+      email: "ada@example.com",
+      name: "Ada Lovelace",
+      imageUrl: "https://example.com/ada.png",
+    });
+    expect(insertChain.onConflictDoUpdate).toHaveBeenCalledTimes(1);
+    expect(deleteChain.where).not.toHaveBeenCalled();
+  });
+
+  it("falls back to first email when primary_email_address_id does not match", async () => {
+    await POST(
+      buildRequest({
+        type: "user.created",
+        data: userFixture({ primary_email_address_id: "email_does_not_exist" }),
+      }) as never,
+    );
+    const inserted = insertChain.values.mock.calls[0]?.[0];
+    expect(inserted?.email).toBe("ada@example.com");
+  });
+
+  it("sets name to null when both first_name and last_name are missing", async () => {
+    await POST(
+      buildRequest({
+        type: "user.created",
+        data: userFixture({ first_name: null, last_name: null }),
+      }) as never,
+    );
+    const inserted = insertChain.values.mock.calls[0]?.[0];
+    expect(inserted?.name).toBeNull();
+  });
+
+  it("refreshes user fields on user.updated via onConflictDoUpdate", async () => {
+    const res = await POST(
+      buildRequest({
+        type: "user.updated",
+        data: userFixture({
+          id: "user_test_updated",
+          first_name: "Grace",
+          last_name: "Hopper",
+          image_url: "https://example.com/grace.png",
+        }),
+      }) as never,
+    );
+    expect(res.status).toBe(200);
+    expect(insertChain.values).toHaveBeenCalledTimes(1);
+    expect(insertChain.onConflictDoUpdate).toHaveBeenCalledTimes(1);
+    const inserted = insertChain.values.mock.calls[0]?.[0];
+    expect(inserted).toMatchObject({
+      id: "user_test_updated",
+      name: "Grace Hopper",
+      imageUrl: "https://example.com/grace.png",
+    });
+  });
+
+  it("deletes the user on user.deleted", async () => {
+    const res = await POST(
+      buildRequest({
+        type: "user.deleted",
+        data: { id: "user_test_deleted" },
+      }) as never,
+    );
+    expect(res.status).toBe(200);
+    expect(insertChain.values).not.toHaveBeenCalled();
+    expect(deleteChain.where).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 200 and skips DB work for unknown event types", async () => {
+    const res = await POST(
+      buildRequest({
+        type: "session.created",
+        data: { id: "sess_1" },
+      }) as never,
+    );
+    expect(res.status).toBe(200);
+    expect(insertChain.values).not.toHaveBeenCalled();
+    expect(deleteChain.where).not.toHaveBeenCalled();
   });
 });
