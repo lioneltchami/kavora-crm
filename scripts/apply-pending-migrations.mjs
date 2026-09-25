@@ -38,6 +38,11 @@ const checks = [
     file: "src/db/migrations/0004_summary_views.sql",
     existsQuery: "SELECT EXISTS (SELECT 1 FROM information_schema.views WHERE table_schema='public' AND table_name='contacts_summary') AS e",
   },
+  {
+    name: "0007_enable_rls",
+    file: "src/db/migrations/0007_enable_rls.sql",
+    existsQuery: "SELECT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='contacts' AND policyname='contacts_org_select') AS e",
+  },
 ];
 
 for (const { name, file, existsQuery } of checks) {
