@@ -11,6 +11,9 @@ const envSchema = z.object({
   // Database
   DATABASE_URL: z.string().url().optional(),
   DIRECT_URL: z.string().url().optional(),
+  DATABASE_APP_ROLE: z.string().optional(),
+  DATABASE_APP_ROLE_PASSWORD: z.string().optional(),
+  DATABASE_URL_TEST: z.string().url().optional(),
 
   // Supabase
   NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
