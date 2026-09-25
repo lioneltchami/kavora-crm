@@ -2,9 +2,9 @@
 //
 // Render tests for the sidebar Organization-switcher slot.
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createElement, type ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, cleanup } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -40,6 +40,10 @@ beforeEach(() => {
   mocks.switcherSpy.mockClear();
 });
 
+afterEach(() => {
+  cleanup();
+});
+
 describe("SidebarEmptyOrg", () => {
   it("renders the create-or-join fallback when the user has zero memberships", () => {
     render(createElement(SidebarEmptyOrg));
@@ -52,16 +56,7 @@ describe("SidebarEmptyOrg", () => {
     expect(mocks.switcherSpy).not.toHaveBeenCalled();
   });
 
-  // TODO [phase-a/reviewer-2]: the Clerk SDK's useOrganizationList returns a
-  // paginated resource whose `.data` accessor may not be hydrated synchronously
-  // in the render path under happy-dom. The mock contract is correct (verified
-  // via debug log: useOrganizationList returns 2 memberships), but the
-  // component still hits the fallback branch. Suspect this is a ClerkProvider
-  // / React Context requirement that the mock doesn't satisfy. Investigate
-  // whether wrapping the render in <ClerkProvider> with a mock client
-  // resolves it, or whether the component should call .userMemberships.count
-  // instead of .userMemberships.data?.length.
-  it.skip("renders the OrganizationSwitcher primitive when the user has memberships", () => {
+  it("renders the OrganizationSwitcher primitive when the user has memberships", () => {
     mocks.list.userMemberships = {
       data: [
         { id: "om_1", organization: { id: "org_1", name: "Acme" } },
