@@ -6,18 +6,19 @@ import {
   contacts,
   companies,
   pipelineStages,
-  KAVORA_ORG_ID,
   notes,
 } from "@/db/schema";
 import { and, desc, eq } from "drizzle-orm";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { requireDbUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function DealDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const { ctx } = await requireDbUser();
   const rows = await db
     .select({
       deal: deals,
@@ -33,7 +34,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     .leftJoin(contacts, eq(contacts.id, deals.contactId))
     .leftJoin(companies, eq(companies.id, deals.companyId))
     .leftJoin(pipelineStages, eq(pipelineStages.id, deals.stageId))
-    .where(and(eq(deals.id, id), eq(deals.orgId, KAVORA_ORG_ID)))
+    .where(and(eq(deals.id, id), eq(deals.orgId, ctx.orgId)))
     .limit(1);
   const row = rows[0];
   if (!row) notFound();
@@ -41,7 +42,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
   const dealNotes = await db
     .select()
     .from(notes)
-    .where(and(eq(notes.dealId, id), eq(notes.orgId, KAVORA_ORG_ID)))
+    .where(and(eq(notes.dealId, id), eq(notes.orgId, ctx.orgId)))
     .orderBy(desc(notes.createdAt));
 
   return (

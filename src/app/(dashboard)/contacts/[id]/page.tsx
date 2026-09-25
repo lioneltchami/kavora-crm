@@ -14,7 +14,6 @@ import {
   deals,
   auditLog,
   users,
-  KAVORA_ORG_ID,
 } from "@/db/schema";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +26,7 @@ import { NoteComposer } from "@/components/contacts/note-composer";
 import { Timeline } from "@/components/contacts/timeline";
 import { DraftOutreachButton } from "@/components/contacts/draft-outreach-button";
 import { MergeHistoryBadge } from "@/components/contacts/merge-history";
+import { requireDbUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +40,7 @@ export default async function ContactDetailPage({
   const { id } = await params;
   const sp = await searchParams;
   const initialTab = sp.tab ?? "timeline";
+  const { ctx } = await requireDbUser();
 
   const contactRows = await db
     .select()
@@ -47,7 +48,7 @@ export default async function ContactDetailPage({
     .where(
       and(
         eq(contacts.id, id),
-        eq(contacts.orgId, KAVORA_ORG_ID),
+        eq(contacts.orgId, ctx.orgId),
         isNull(contacts.deletedAt),
       ),
     )
@@ -106,31 +107,31 @@ export default async function ContactDetailPage({
       db
         .select()
         .from(calls)
-        .where(and(eq(calls.contactId, id), eq(calls.orgId, KAVORA_ORG_ID)))
+        .where(and(eq(calls.contactId, id), eq(calls.orgId, ctx.orgId)))
         .orderBy(desc(calls.createdAt))
         .limit(20),
       db
         .select()
         .from(smsMessages)
-        .where(and(eq(smsMessages.contactId, id), eq(smsMessages.orgId, KAVORA_ORG_ID)))
+        .where(and(eq(smsMessages.contactId, id), eq(smsMessages.orgId, ctx.orgId)))
         .orderBy(desc(smsMessages.createdAt))
         .limit(50),
       db
         .select()
         .from(notes)
-        .where(and(eq(notes.contactId, id), eq(notes.orgId, KAVORA_ORG_ID)))
+        .where(and(eq(notes.contactId, id), eq(notes.orgId, ctx.orgId)))
         .orderBy(desc(notes.createdAt))
         .limit(20),
       db
         .select()
         .from(deals)
-        .where(and(eq(deals.contactId, id), eq(deals.orgId, KAVORA_ORG_ID)))
+        .where(and(eq(deals.contactId, id), eq(deals.orgId, ctx.orgId)))
         .orderBy(desc(deals.updatedAt))
         .limit(20),
       db
         .select()
         .from(aiDrafts)
-        .where(and(eq(aiDrafts.contactId, id), eq(aiDrafts.orgId, KAVORA_ORG_ID)))
+        .where(and(eq(aiDrafts.contactId, id), eq(aiDrafts.orgId, ctx.orgId)))
         .orderBy(desc(aiDrafts.createdAt))
         .limit(10),
     ]);
