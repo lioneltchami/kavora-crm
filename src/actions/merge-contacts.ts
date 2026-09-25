@@ -2,9 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
+import { contacts } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 
@@ -15,6 +16,16 @@ const mergeInputSchema = z
   })
   .refine((v) => v.winnerId !== v.loserId, {
     message: "winnerId and loserId must differ",
+    path: ["loserId"],
+  });
+
+const mergeValidateInputSchema = z
+  .object({
+    winnerId: z.string().uuid(),
+    loserId: z.string().uuid(),
+  })
+  .refine((v) => v.winnerId !== v.loserId, {
+    message: "Winner and loser must be different contacts",
     path: ["loserId"],
   });
 
@@ -111,4 +122,149 @@ export async function mergeContact(input: {
   revalidatePath("/contacts");
   revalidatePath(`/contacts/${winnerId}`);
   redirect(`/contacts/${winnerId}`);
+}
+
+// ─── Pre-merge validation (UI confirm-step helper) ─────────────────────────────
+
+export interface MergeCandidateSummary {
+  id: string;
+  firstName: string;
+  lastName: string | null;
+  email: string | null;
+  phone: string | null;
+  isDeleted: boolean;
+  emailCount: number;
+  phoneCount: number;
+}
+
+export interface ValidateMergeResult {
+  valid: boolean;
+  error?: string;
+  winner?: MergeCandidateSummary;
+  loser?: MergeCandidateSummary;
+  /** Loser emails that would actually be copied (case-insensitive dedup vs winner). */
+  predictedCopiedEmails?: number;
+  /** Loser phones that would actually be copied (exact E.164 match vs winner). */
+  predictedCopiedPhones?: number;
+}
+
+type ChannelCountRow = {
+  winner_email_count: number;
+  loser_email_count: number;
+  winner_phone_count: number;
+  loser_phone_count: number;
+  predicted_copied_emails: number;
+  predicted_copied_phones: number;
+};
+
+/**
+ * Pre-merge validation: checks that winner + loser exist in the caller's org,
+ * neither is soft-deleted, and reports what `merge_contacts()` would copy
+ * (mirrors the dedup semantics in src/db/migrations/0002_merge_contacts.sql).
+ * Called by the UI before showing the confirm step.
+ */
+export async function validateMergeCandidates(input: {
+  winnerId: string;
+  loserId: string;
+}): Promise<ValidateMergeResult> {
+  const parsed = mergeValidateInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      valid: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid input",
+    };
+  }
+  const { winnerId, loserId } = parsed.data;
+
+  const { ctx } = await requireDbUser();
+
+  // Single round-trip for both contacts, org-scoped via requireDbUser's ctx.
+  const rows = await db
+    .select({
+      id: contacts.id,
+      firstName: contacts.firstName,
+      lastName: contacts.lastName,
+      email: contacts.email,
+      phone: contacts.phone,
+      orgId: contacts.orgId,
+      deletedAt: contacts.deletedAt,
+    })
+    .from(contacts)
+    .where(inArray(contacts.id, [winnerId, loserId]));
+
+  const winnerRow = rows.find((r) => r.id === winnerId);
+  const loserRow = rows.find((r) => r.id === loserId);
+
+  // Order matters: surface "not found" before "forbidden" so we don't leak
+  // existence of rows in other orgs to a probing caller.
+  if (!winnerRow || !loserRow) {
+    return { valid: false, error: "Contact not found" };
+  }
+  if (winnerRow.orgId !== ctx.orgId || loserRow.orgId !== ctx.orgId) {
+    return { valid: false, error: "Forbidden" };
+  }
+  if (winnerRow.deletedAt !== null || loserRow.deletedAt !== null) {
+    return { valid: false, error: "Cannot merge a deleted contact" };
+  }
+
+  // Channel counts + predicted copies in one shot. Mirrors the
+  // NOT EXISTS / lower() dedup used by merge_contacts() so the UI
+  // preview matches the actual merge outcome.
+  const counts = await db.execute<ChannelCountRow>(sql`
+    WITH
+      we AS (
+        SELECT count(*)::int AS total,
+               COALESCE(array_agg(lower("email")), ARRAY[]::text[]) AS emails
+          FROM "contact_emails" WHERE "contact_id" = ${winnerId}::uuid
+      ),
+      le AS (
+        SELECT count(*)::int AS total,
+               COALESCE(array_agg(lower("email")), ARRAY[]::text[]) AS emails
+          FROM "contact_emails" WHERE "contact_id" = ${loserId}::uuid
+      ),
+      wp AS (
+        SELECT count(*)::int AS total,
+               COALESCE(array_agg("phone_e164"), ARRAY[]::text[]) AS phones
+          FROM "contact_phones" WHERE "contact_id" = ${winnerId}::uuid
+      ),
+      lp AS (
+        SELECT count(*)::int AS total,
+               COALESCE(array_agg("phone_e164"), ARRAY[]::text[]) AS phones
+          FROM "contact_phones" WHERE "contact_id" = ${loserId}::uuid
+      )
+    SELECT
+      we.total AS winner_email_count,
+      le.total AS loser_email_count,
+      wp.total AS winner_phone_count,
+      lp.total AS loser_phone_count,
+      (SELECT count(*)::int FROM unnest(le.emails) e WHERE NOT (e = ANY(we.emails))) AS predicted_copied_emails,
+      (SELECT count(*)::int FROM unnest(lp.phones) p WHERE NOT (p = ANY(wp.phones))) AS predicted_copied_phones
+    FROM we, le, wp, lp
+  `);
+
+  const c = counts.rows[0];
+  if (!c) throw new Error("validateMergeCandidates: count query returned no row");
+
+  const toSummary = (
+    r: typeof winnerRow,
+    emailCount: number,
+    phoneCount: number,
+  ): MergeCandidateSummary => ({
+    id: r.id,
+    firstName: r.firstName,
+    lastName: r.lastName,
+    email: r.email,
+    phone: r.phone,
+    isDeleted: r.deletedAt !== null,
+    emailCount,
+    phoneCount,
+  });
+
+  return {
+    valid: true,
+    winner: toSummary(winnerRow, c.winner_email_count, c.winner_phone_count),
+    loser: toSummary(loserRow, c.loser_email_count, c.loser_phone_count),
+    predictedCopiedEmails: c.predicted_copied_emails,
+    predictedCopiedPhones: c.predicted_copied_phones,
+  };
 }
