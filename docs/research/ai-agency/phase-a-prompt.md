@@ -468,8 +468,17 @@ the file list below — do not edit anything outside it, even if you spot
 smells. Cross-cutting changes go in tests/phase-a-issues.md and proceed
 without them.
 
+PRE-FLIGHT — env vars for `pnpm build`:
+The Clerk publishable key is required by `next build` for static page
+generation. The parent has already pulled Vercel env vars to
+`/tmp/kavora-env-check`. Before every `pnpm build`, run:
+    export $(grep -v '^#' /tmp/kavora-env-check | xargs)
+This exports every key as an env var. `pnpm build` will then succeed.
+`pnpm typecheck` does NOT need env vars and runs cleanly without them.
+
 Conventions (see docs/AGENTS.md, docs/SETUP.md):
 - Each commit: run `pnpm typecheck && pnpm build` before pushing.
+  (Build needs the export above.)
 - Commit per logical unit; push to origin/main.
 - Tag commit messages `[phase-a/<builder-name>]`.
 - DO NOT touch .env.local; do NOT run `vercel env pull` into the workspace
@@ -484,7 +493,7 @@ Final summary: list all commit SHAs pushed, any changes to
 scripts/apply-pending-migrations.mjs (migrations always need a check entry),
 and any deviations from the spec.
 
-Your scope (from tests/phase-a-prompt.md):
+Your scope (from docs/research/ai-agency/phase-a-prompt.md):
 ```
 
 Then paste the builder-specific body from §2.1, §2.2, §2.3, or §2.4.
@@ -606,7 +615,7 @@ Out of scope:
 
 ### File allowlist
 
-- **Allowlist**: `src/app/api/webhooks/clerk/route.ts`, `src/app/(dashboard)/layout.tsx`, `src/components/dashboard/sidebar.tsx`, `src/components/dashboard/sidebar-brand.tsx`, `src/components/dashboard/sidebar-empty-org.tsx` (new), `src/components/ui/organization-switcher.tsx` (new thin wrapper), `src/app/layout.tsx` (only if `ClerkProvider` needs new `appearance` props), `src/middleware.ts` (only if a real change is required), `tests/integration/clerk-webhook.test.ts` (new), `tests/components/organization-switcher.test.tsx` (new).
+- **Allowlist**: `src/app/api/webhooks/clerk/route.ts`, `src/app/(dashboard)/layout.tsx`, `src/components/dashboard/sidebar.tsx`, `src/components/dashboard/sidebar-brand.tsx`, `src/components/dashboard/sidebar-empty-org.tsx` (new), `src/components/ui/organization-switcher.tsx` (new thin wrapper), `src/lib/clerk-orgs.ts` (new — Clerk Organizations helpers, since `src/lib/auth.ts` exists as a file and we can't create `src/lib/auth/` as a directory), `src/app/layout.tsx` (only if `ClerkProvider` needs new `appearance` props), `src/middleware.ts` (only if a real change is required), `tests/integration/clerk-webhook.test.ts` (new), `tests/components/organization-switcher.test.tsx` (new).
 - **Deny-list (explicit)**: every file under `src/db/`, `src/lib/org/**` except to import, every file under `scripts/`, every file under `tests/rls/`, every other file under `src/app/`, every file under `src/components/` other than the four listed, every file under `docs/`, plus `package.json`, `pnpm-lock.yaml`, and `tsconfig.json`.
 
 ### Skills to load (mandatory)
