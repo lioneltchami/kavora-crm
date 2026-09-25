@@ -4,14 +4,24 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users, KAVORA_ORG_ID } from "@/db/schema";
 import { env } from "@/lib/env";
+import {
+  deleteOrganization,
+  upsertOrganization,
+  type ClerkOrgPayload,
+} from "@/lib/clerk-orgs";
 
 /**
- * Clerk webhook — keeps our `users` table in sync with Clerk users.
+ * Clerk webhook — keeps our `users` and `organizations` tables in sync with
+ * Clerk users, organizations, and memberships.
  *
  * Configure in Clerk dashboard:
  *   Endpoint: https://<your-domain>/api/webhooks/clerk
- *   Events: user.created, user.updated, user.deleted
+ *   Events: user.created, user.updated, user.deleted,
+ *           organization.created, organization.updated, organization.deleted
  *   Signing secret → CLERK_WEBHOOK_SECRET env var
+ *
+ * Organizations must be enabled in the Clerk dashboard (Settings →
+ * Organizations → "Enable Organizations") for org events to fire.
  */
 export async function POST(req: Request) {
   const secret = env.CLERK_WEBHOOK_SECRET;
@@ -42,29 +52,43 @@ export async function POST(req: Request) {
   }
 
   try {
-    if (evt.type === "user.created" || evt.type === "user.updated") {
-      const u = evt.data;
-      const primary = u.email_addresses.find((e) => e.id === u.primary_email_address_id);
-      await db
-        .insert(users)
-        .values({
-          id: u.id,
-          orgId: KAVORA_ORG_ID,
-          email: primary?.email_address ?? u.email_addresses[0]?.email_address ?? "",
-          name: [u.first_name, u.last_name].filter(Boolean).join(" ") || null,
-          imageUrl: u.image_url ?? null,
-        })
-        .onConflictDoUpdate({
-          target: users.id,
-          set: {
+    switch (evt.type) {
+      case "user.created":
+      case "user.updated": {
+        const u = evt.data;
+        const primary = u.email_addresses.find((e) => e.id === u.primary_email_address_id);
+        await db
+          .insert(users)
+          .values({
+            id: u.id,
+            orgId: KAVORA_ORG_ID,
             email: primary?.email_address ?? u.email_addresses[0]?.email_address ?? "",
             name: [u.first_name, u.last_name].filter(Boolean).join(" ") || null,
             imageUrl: u.image_url ?? null,
-            updatedAt: new Date(),
-          },
-        });
-    } else if (evt.type === "user.deleted") {
-      await db.delete(users).where(eq(users.id, evt.data.id!));
+          })
+          .onConflictDoUpdate({
+            target: users.id,
+            set: {
+              email: primary?.email_address ?? u.email_addresses[0]?.email_address ?? "",
+              name: [u.first_name, u.last_name].filter(Boolean).join(" ") || null,
+              imageUrl: u.image_url ?? null,
+              updatedAt: new Date(),
+            },
+          });
+        break;
+      }
+      case "user.deleted":
+        await db.delete(users).where(eq(users.id, evt.data.id!));
+        break;
+      case "organization.created":
+      case "organization.updated":
+        await upsertOrganization(evt.data);
+        break;
+      case "organization.deleted":
+        await deleteOrganization(evt.data);
+        break;
+      default:
+        break;
     }
     return NextResponse.json({ ok: true });
   } catch (err) {
@@ -73,12 +97,13 @@ export async function POST(req: Request) {
   }
 }
 
-// ─── Clerk webhook event types we care about ──────────────────────────────────
-
 type ClerkWebhookEvent =
   | { type: "user.created"; data: ClerkUserPayload }
   | { type: "user.updated"; data: ClerkUserPayload }
-  | { type: "user.deleted"; data: { id: string } };
+  | { type: "user.deleted"; data: { id: string } }
+  | { type: "organization.created"; data: ClerkOrgPayload }
+  | { type: "organization.updated"; data: ClerkOrgPayload }
+  | { type: "organization.deleted"; data: ClerkOrgPayload };
 
 type ClerkUserPayload = {
   id: string;
