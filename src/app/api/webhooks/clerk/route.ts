@@ -52,13 +52,6 @@ export async function POST(req: Request) {
       case "user.updated": {
         const u = evt.data;
         const primary = u.email_addresses.find((e) => e.id === u.primary_email_address_id);
-        // TODO(phase-a.5): the user.created payload carries no org context. The
-        // `users.orgId` column is NOT NULL, so we insert a placeholder and let
-        // `attachMembership` overwrite it when the membership event arrives.
-        // Until then this user can log in but has no real org membership — the
-        // placeholder should be replaced with a "no-org" sentinel (or the
-        // column should be made nullable, with downstream queries tolerating
-        // NULL) so we can drop the KAVORA_ORG_ID seam entirely.
         await adminDb
           .insert(users)
           .values({
