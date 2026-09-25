@@ -11,7 +11,9 @@
  *     the route returns 500 (Clerk will retry).
  *   - `KAVORA_ORG_ID` is only ever used as a defensive fallback when the
  *     Clerk payload omits an organization id. We log a warning instead of
- *     throwing so a malformed event never bricks the webhook.
+ *     throwing so a malformed event never bricks the webhook. Kept as a
+ *     known DEPRECATED seam pending a redesign of the user-creation flow so
+ *     placeholders are not needed.
  */
 
 import { eq, and } from "drizzle-orm";
