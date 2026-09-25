@@ -48,6 +48,18 @@ BEGIN
     RAISE EXCEPTION 'merge_contacts: loser % not found in org %', loser_id, p_org_id;
   END IF;
 
+  -- ─── Soft-delete guard (defense in depth) ──────────────────────────────────
+  -- The app layer's validateMergeCandidates already refuses soft-deleted
+  -- contacts, but a direct SQL/CLI call would otherwise succeed. Both sides
+  -- must be live before any destructive work happens.
+
+  IF EXISTS (SELECT 1 FROM "contacts" WHERE "id" = winner_id AND "deleted_at" IS NOT NULL) THEN
+    RAISE EXCEPTION 'merge_contacts: winner % is soft-deleted', winner_id;
+  END IF;
+  IF EXISTS (SELECT 1 FROM "contacts" WHERE "id" = loser_id AND "deleted_at" IS NOT NULL) THEN
+    RAISE EXCEPTION 'merge_contacts: loser % is soft-deleted', loser_id;
+  END IF;
+
   -- ─── Reassign FK references from loser → winner ────────────────────────────
 
   UPDATE "notes"
