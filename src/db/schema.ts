@@ -809,7 +809,15 @@ export type NewContactEmail = typeof contactEmails.$inferInsert;
 export type ContactPhone = typeof contactPhones.$inferSelect;
 export type NewContactPhone = typeof contactPhones.$inferInsert;
 
-/** Used as the single source-of-truth `org_id` everywhere. */
+/**
+ * Back-compat alias for the canonical Kavora organization id.
+ *
+ * @deprecated Use `currentOrgId()` from `@/lib/org` instead. The hardcoded
+ * value survives only because external code paths (tests, scripts) may
+ * still reference it; new code must read the org id from the Clerk session
+ * at request time via the helper. Will be removed once those references
+ * have been migrated.
+ */
 export const KAVORA_ORG_ID = "kavora";
 
 /** Suppress unused-import warning for sql helper; kept for future raw queries. */
