@@ -17,7 +17,6 @@ import {
   activities,
   aiSummaries,
   leadScores,
-  KAVORA_ORG_ID,
 } from "@/db/schema";
 import { transcribeCall } from "@/lib/ai/transcribe";
 import { summarizeSms, summarizeCallTranscript } from "@/lib/ai/summarize";
@@ -131,7 +130,7 @@ export const transcribeCallTask = task({
       const inserted = await db
         .insert(activities)
         .values({
-          orgId: call.orgId ?? KAVORA_ORG_ID,
+          orgId: call.orgId,
           type: "call",
           contactId: call.contactId,
           refId: call.id,
@@ -144,7 +143,7 @@ export const transcribeCallTask = task({
     if (activityId && summary) {
       const { aiSummaries } = await import("@/db/schema");
       await db.insert(aiSummaries).values({
-        orgId: call.orgId ?? KAVORA_ORG_ID,
+        orgId: call.orgId,
         activityId,
         summary: summary.summary,
         nextActions: summary.nextActions,
@@ -161,7 +160,7 @@ export const transcribeCallTask = task({
         summary != null
           ? `${result.transcript}\n\nSummary: ${summary.summary}\nNext actions: ${summary.nextActions.join("; ")}`
           : result.transcript,
-      orgId: call.orgId ?? KAVORA_ORG_ID,
+      orgId: call.orgId,
     });
 
     return { ok: true };

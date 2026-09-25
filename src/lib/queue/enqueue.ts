@@ -1,7 +1,7 @@
 import "server-only";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { smsMessages, calls, activities, aiSummaries, KAVORA_ORG_ID } from "@/db/schema";
+import { smsMessages, calls, activities, aiSummaries } from "@/db/schema";
 import { transcribeCall } from "@/lib/ai/transcribe";
 import { summarizeSms, summarizeCallTranscript } from "@/lib/ai/summarize";
 import { embedActivity } from "@/lib/ai/embed";
@@ -57,12 +57,7 @@ export async function enqueueInboundSms({ messageSid }: { messageSid: string }):
       const row = await db
         .select()
         .from(smsMessages)
-        .where(
-          and(
-            eq(smsMessages.twilioMessageSid, messageSid),
-            eq(smsMessages.orgId, KAVORA_ORG_ID),
-          ),
-        )
+        .where(eq(smsMessages.twilioMessageSid, messageSid))
         .limit(1);
       const sms = row[0];
       if (!sms) return;
@@ -124,7 +119,7 @@ export async function enqueueCallTranscription(opts: {
         const inserted = await db
           .insert(activities)
           .values({
-            orgId: call.orgId ?? KAVORA_ORG_ID,
+            orgId: call.orgId,
             type: "call",
             contactId: call.contactId,
             refId: call.id,
@@ -136,7 +131,7 @@ export async function enqueueCallTranscription(opts: {
       }
       if (activityId && summary) {
         await db.insert(aiSummaries).values({
-          orgId: call.orgId ?? KAVORA_ORG_ID,
+          orgId: call.orgId,
           activityId,
           summary: summary.summary,
           nextActions: summary.nextActions,
@@ -154,7 +149,7 @@ export async function enqueueCallTranscription(opts: {
           summary != null
             ? `${result.transcript}\n\nSummary: ${summary.summary}\nNext actions: ${summary.nextActions.join("; ")}`
             : result.transcript,
-        orgId: call.orgId ?? KAVORA_ORG_ID,
+        orgId: call.orgId,
       });
     },
   );
